@@ -1,0 +1,17 @@
+[package]
+version = "0.1.0"
+title = "Dog Lab"
+description = "Go2W-Piper assets and tasks maintained outside Isaac Lab core."
+readme = "docs/README.md"
+repository = ""
+category = "robotics"
+keywords = ["robotics", "isaaclab", "go2w", "piper", "locomotion", "manipulation"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_assets" = {}
+"isaaclab_tasks" = {}
+"isaaclab_rl" = {}
+
+[[python.module]]
+name = "dog_lab"

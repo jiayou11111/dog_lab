@@ -12,20 +12,15 @@ from isaaclab.assets.articulation import ArticulationCfg
 from dog_lab import DOG_LAB_DATA_DIR
 
 
-GO2W_PIPER_MJCF_PATH = (
+GO2W_PIPER_USD_PATH = (
     f"{DOG_LAB_DATA_DIR}/Robots/Unitree/Go2W-Piper/"
-    "go2w_piper_mjcf/go2w_piper_isaac.xml"
+    "go2w_piper_description/USD.usd"
 )
-"""Path to the Isaac-friendly Go2W-Piper MJCF."""
+"""Path to the Go2W-Piper USD asset."""
 
 GO2W_PIPER_CFG = ArticulationCfg(
-    spawn=sim_utils.MjcfFileCfg(
-        asset_path=GO2W_PIPER_MJCF_PATH,
-        usd_file_name="go2w_piper_complete.usd",
-        force_usd_conversion=True,
-        fix_base=False,
-        import_sites=False,
-        self_collision=False,
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=GO2W_PIPER_USD_PATH,
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -37,7 +32,7 @@ GO2W_PIPER_CFG = ArticulationCfg(
             max_depenetration_velocity=1.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False,
+            enabled_self_collisions=True,
             solver_position_iteration_count=4,
             solver_velocity_iteration_count=0,
         ),
@@ -48,7 +43,7 @@ GO2W_PIPER_CFG = ArticulationCfg(
             ".*_hip_joint": 0.0,
             ".*_thigh_joint": 0.67,
             ".*_calf_joint": -1.3,
-            ".*_wheel_joint": 0.0,
+            ".*_foot_joint": 0.0,
             "joint1": 0.0,
             "joint2": 1.57,
             "joint3": -0.8,
@@ -77,7 +72,7 @@ GO2W_PIPER_CFG = ArticulationCfg(
             friction=0.0,
         ),
         "wheels": ImplicitActuatorCfg(
-            joint_names_expr=[".*_wheel_joint"],
+            joint_names_expr=[".*_foot_joint"],
             effort_limit=23.7,
             velocity_limit=30.1,
             stiffness=0.0,
@@ -94,4 +89,4 @@ GO2W_PIPER_CFG = ArticulationCfg(
         ),
     },
 )
-"""Configuration of the Go2W-Piper mobile manipulator imported from an Isaac-friendly MJCF."""
+"""Configuration of the Go2W-Piper mobile manipulator loaded directly from USD."""

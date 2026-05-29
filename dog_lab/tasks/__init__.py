@@ -1,7 +1,7 @@
-"""Dog Lab task registrations."""
+"""Dog Lab task registrations.
 
-from isaaclab_tasks.utils import import_packages
+The project currently carries one training task: Go2W-Piper stage-1 locomotion.
+Keep the import explicit so the task tree stays easy to read and debug.
+"""
 
-
-_BLACKLIST_PKGS = ["utils", ".mdp"]
-import_packages(__name__, _BLACKLIST_PKGS)
+from . import go2w_piper  # noqa: F401

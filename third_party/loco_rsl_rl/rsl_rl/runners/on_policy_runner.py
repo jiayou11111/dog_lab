@@ -1,0 +1,302 @@
+import time
+import os
+from collections import deque
+import statistics
+
+import torch
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ModuleNotFoundError:
+    class SummaryWriter:
+        """Fallback writer used when tensorboard is not installed."""
+
+        def __init__(self, *args, **kwargs):
+            print("[WARN] tensorboard is not installed; scalar logging is disabled.")
+
+        def add_scalar(self, *args, **kwargs):
+            pass
+
+from rsl_rl.algorithms import PPO
+from rsl_rl.modules import ActorCritic
+from rsl_rl.env import VecEnv
+
+class OnPolicyRunner:
+
+    def __init__(self,
+                 env: VecEnv,
+                 train_cfg,
+                 log_dir=None,
+                 device='cpu'):
+
+        self.cfg=train_cfg["runner"]
+        self.alg_cfg = train_cfg["algorithm"]
+        self.policy_cfg = train_cfg["policy"]
+        self.device = device
+        self.env = env
+        self.num_proprio = env.cfg.loco_runner.num_proprio
+        self.num_priv = env.cfg.loco_runner.num_priv
+        self.num_hist = env.cfg.loco_runner.history_len
+        self.num_leg_actions = env.cfg.loco_runner.num_leg_actions
+        self.num_arm_actions = env.cfg.loco_runner.num_arm_actions
+        self.num_costs = env.cfg.loco_runner.num_costs
+        self.cost_names = [
+            name
+            for name, term_cfg in vars(env.cfg.loco_costs).items()
+            if hasattr(term_cfg, "func") and hasattr(term_cfg, "weight")
+        ]
+        self.cost_k_values = torch.tensor(
+            [[getattr(env.cfg.loco_costs, name).weight * env.unwrapped.step_dt for name in self.cost_names]],
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.cost_d_values_tensor = torch.tensor(
+            [[[env.cfg.loco_costs.d_values[name] for name in self.cost_names]]],
+            dtype=torch.float,
+            device=self.device,
+        )
+        num_critic_obs = self.env.num_privileged_obs if self.env.num_privileged_obs is not None else self.env.num_obs
+        actor_critic_class = eval(self.cfg["policy_class_name"]) # ActorCritic
+        actor_critic: ActorCritic = actor_critic_class( self.num_proprio,
+                                                        self.num_proprio,
+                                                        env.num_actions,
+                                                        **self.policy_cfg,
+                                                        num_leg_actions=self.num_leg_actions,
+                                                        num_arm_actions=self.num_arm_actions,
+                                                        num_priv=self.num_priv,
+                                                        num_hist=self.num_hist,
+                                                        num_prop=self.num_proprio,
+                                                        num_costs=self.num_costs
+                                                        ).to(self.device)
+        alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
+        self.alg_cfg['k_value'] = self.cost_k_values
+        self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
+        self.num_steps_per_env = self.cfg["num_steps_per_env"]
+        self.save_interval = self.cfg["save_interval"]
+
+        # init storage and model
+        self.alg.init_storage(
+            self.env.num_envs, 
+            self.num_steps_per_env, 
+            [self.env.num_obs], 
+            [self.env.num_privileged_obs], 
+            [self.env.num_actions],
+            [self.num_costs],
+            self.cost_d_values_tensor)
+
+        # Log
+        self.log_dir = log_dir
+        self.writer = None
+        self.tot_timesteps = 0
+        self.tot_time = 0
+        self.current_learning_iteration = 0
+        self.dagger_update_freq = self.alg_cfg["dagger_update_freq"]
+
+        _, _ = self.env.reset()
+        
+    def set_it(self, it):
+        self.current_learning_iteration = it
+    
+    def learn(self, num_learning_iterations, init_at_random_ep_len=False):
+        # init metrics
+        mean_value_loss = 0.
+        mean_cost_value_loss = 0
+        mean_viol_loss = 0
+        mean_surrogate_loss = 0.
+        value_mixing_ratio = 0.
+        mean_hist_latent_loss = 0.
+        mean_priv_reg_loss = 0. 
+        priv_reg_coef = 0.
+
+        # initialize writer
+        if self.log_dir is not None and self.writer is None:
+            self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
+        if init_at_random_ep_len:
+            self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))
+        obs, critic_obs = self._get_observations_and_critic()
+        obs, critic_obs = obs.to(self.device), critic_obs.to(self.device)
+        self.alg.actor_critic.train() # switch to train mode (for dropout for example)
+
+        ep_infos = []
+        legrewbuffer = deque(maxlen=100)
+        armrewbuffer = deque(maxlen=100)
+        lenbuffer = deque(maxlen=100)
+        cur_leg_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
+        cur_arm_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
+        cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
+
+        tot_iter = self.current_learning_iteration + num_learning_iterations
+        for it in range(self.current_learning_iteration, tot_iter):
+            start = time.time()
+            hist_encoding = it % self.dagger_update_freq == 0
+
+            # Rollout
+            with torch.inference_mode():
+                for i in range(self.num_steps_per_env):
+                    actions = self.alg.act(obs, critic_obs, hist_encoding)
+                    obs, rewards, dones, infos = self.env.step(actions)
+                    loco_infos = infos["loco"]
+                    leg_rewards = loco_infos["leg_rewards"]
+                    arm_rewards = loco_infos["arm_rewards"]
+                    costs = loco_infos["costs"]
+                    critic_obs = infos["observations"].get("critic", obs)
+                    obs, critic_obs, leg_rewards, arm_rewards, costs, dones = obs.to(self.device), critic_obs.to(self.device), leg_rewards.to(self.device), arm_rewards.to(self.device), costs.to(self.device), dones.to(self.device)
+                    self.alg.process_env_step(leg_rewards, arm_rewards, costs, dones, infos)
+
+                    if self.log_dir is not None:
+                        # Book keeping
+                        if 'episode' in infos:
+                            ep_infos.append(infos['episode'])
+                        cur_leg_reward_sum += leg_rewards
+                        cur_arm_reward_sum += arm_rewards
+                        cur_episode_length += 1
+                        new_ids = (dones > 0).nonzero(as_tuple=False)
+                        legrewbuffer.extend(cur_leg_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
+                        armrewbuffer.extend(cur_arm_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
+                        lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
+                        cur_leg_reward_sum[new_ids] = 0
+                        cur_arm_reward_sum[new_ids] = 0
+                        cur_episode_length[new_ids] = 0
+
+                stop = time.time()
+                collection_time = stop - start
+
+                # Learning step
+                start = stop
+                self.alg.compute_returns(critic_obs)
+                self.alg.compute_cost_returns(critic_obs)
+
+            # Update k value for better exploration
+            k_value = self.alg.update_k_value(it)
+
+            if hist_encoding:
+                mean_hist_latent_loss = self.alg.update_dagger()
+            else:
+                mean_value_loss, mean_surrogate_loss, value_mixing_ratio, mean_priv_reg_loss, priv_reg_coef, mean_cost_value_loss, mean_viol_loss = self.alg.update()
+            
+            stop = time.time()
+            learn_time = stop - start
+            if self.log_dir is not None:
+                self.log(locals())
+            if it % self.save_interval == 0:
+                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)), it)
+            ep_infos.clear()
+        
+        self.current_learning_iteration += num_learning_iterations
+        self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)), self.current_learning_iteration)
+
+    def _get_observations_and_critic(self):
+        obs_result = self.env.get_observations()
+        if isinstance(obs_result, tuple):
+            obs, extras = obs_result
+            critic_obs = extras["observations"].get("critic", obs)
+            return obs, critic_obs
+        return obs_result, obs_result
+
+    def log(self, locs, width=80, pad=35):
+        self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
+        self.tot_time += locs['collection_time'] + locs['learn_time']
+        iteration_time = locs['collection_time'] + locs['learn_time']
+
+        ep_string = f''
+        if locs['ep_infos']:
+            for key in locs['ep_infos'][0]:
+                infotensor = torch.tensor([], device=self.device)
+                for ep_info in locs['ep_infos']:
+                    # handle scalar and zero dimensional tensor infos
+                    if not isinstance(ep_info[key], torch.Tensor):
+                        ep_info[key] = torch.Tensor([ep_info[key]])
+                    if len(ep_info[key].shape) == 0:
+                        ep_info[key] = ep_info[key].unsqueeze(0)
+                    infotensor = torch.cat((infotensor, ep_info[key].to(self.device)))
+                value = torch.mean(infotensor)
+                self.writer.add_scalar('Episode/' + key, value, locs['it'])
+                ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
+        leg_mean_std = self.alg.actor_critic.std[:, :self.num_leg_actions].mean()
+        arm_mean_std = self.alg.actor_critic.std[:, self.num_leg_actions:].mean()
+        fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
+
+        self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
+        self.writer.add_scalar('Loss/cost_value_function', locs['mean_cost_value_loss'], locs['it'])
+        self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
+        self.writer.add_scalar('Loss/viol_loss', locs['mean_viol_loss'], locs['it'])
+        self.writer.add_scalar('Loss/hist_latent_loss', locs['mean_hist_latent_loss'], locs['it'])
+        self.writer.add_scalar('Loss/priv_reg_loss', locs['mean_priv_reg_loss'], locs['it'])
+        self.writer.add_scalar('Loss/priv_ref_lambda', locs['priv_reg_coef'], locs['it'])
+        self.writer.add_scalar('Loss/value_mixing_ratio', locs['value_mixing_ratio'], locs['it'])
+        self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
+        self.writer.add_scalar('Policy/leg_mean_noise_std', leg_mean_std.item(), locs['it'])
+        self.writer.add_scalar('Policy/arm_mean_noise_std', arm_mean_std.item(), locs['it'])
+        self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
+        self.writer.add_scalar('Perf/collection_time', locs['collection_time'], locs['it'])
+        self.writer.add_scalar('Perf/learning_time', locs['learn_time'], locs['it'])
+        if len(locs['legrewbuffer']) > 0 and len(locs['armrewbuffer']) > 0:
+            self.writer.add_scalar('Train/mean_leg_reward', statistics.mean(locs['legrewbuffer']), locs['it'])
+            self.writer.add_scalar('Train/mean_arm_reward', statistics.mean(locs['armrewbuffer']), locs['it'])
+            self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), locs['it'])
+
+        str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
+
+        if len(locs['legrewbuffer']) > 0 and len(locs['armrewbuffer']) > 0:
+            log_string = (f"""{'#' * width}\n"""
+                          f"""{str.center(width, ' ')}\n\n"""
+                          f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
+                            'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
+                          f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
+                          f"""{'Cost Value function loss:':>{pad}} {locs['mean_cost_value_loss']:.4f}\n"""
+                          f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
+                          f"""{'Violation loss:':>{pad}} {locs['mean_viol_loss']:.4f}\n"""
+                          f"""{'History latent supervision loss:':>{pad}} {locs['mean_hist_latent_loss']:.4f}\n"""
+                          f"""{'Privileged info regularizer loss:':>{pad}} {locs['mean_priv_reg_loss']:.4f}\n"""
+                          f"""{'Privileged info regularizer lambda:':>{pad}} {locs['priv_reg_coef']:.4f}\n"""
+                          f"""{'Leg mean action noise std:':>{pad}} {leg_mean_std.item():.2f}\n"""
+                          f"""{'Arm mean action noise std:':>{pad}} {arm_mean_std.item():.2f}\n"""
+                          f"""{'Mean leg reward:':>{pad}} {statistics.mean(locs['legrewbuffer']):.2f}\n"""
+                          f"""{'Mean arm reward:':>{pad}} {statistics.mean(locs['armrewbuffer']):.2f}\n"""
+                          f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")
+        else:
+            log_string = (f"""{'#' * width}\n"""
+                          f"""{str.center(width, ' ')}\n\n"""
+                          f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
+                            'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
+                          f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
+                          f"""{'Cost Value function loss:':>{pad}} {locs['mean_cost_value_loss']:.4f}\n"""
+                          f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
+                          f"""{'Violation loss:':>{pad}} {locs['mean_viol_loss']:.4f}\n"""
+                          f"""{'History latent supervision loss:':>{pad}} {locs['mean_hist_latent_loss']:.4f}\n"""
+                          f"""{'Leg mean action noise std:':>{pad}} {leg_mean_std.item():.2f}\n"""
+                          f"""{'Arm mean action noise std:':>{pad}} {arm_mean_std.item():.2f}\n""")
+
+        log_string += ep_string
+        log_string += (f"""{'-' * width}\n"""
+                       f"""{'Total timesteps:':>{pad}} {self.tot_timesteps}\n"""
+                       f"""{'Iteration time:':>{pad}} {iteration_time:.2f}s\n"""
+                       f"""{'Total time:':>{pad}} {self.tot_time:.2f}s\n"""
+                       f"""{'ETA:':>{pad}} {self.tot_time / (locs['it'] + 1) * (
+                               locs['num_learning_iterations'] - locs['it']):.1f}s\n""")
+        print(log_string)
+
+    def save(self, path, it, infos=None):
+        torch.save({
+            'model_state_dict': self.alg.actor_critic.state_dict(),
+            'optimizer_state_dict': self.alg.optimizer.state_dict(),
+            'iter': it,
+            'infos': infos,
+            }, path)
+
+    def load(self, path, load_optimizer=True):
+        loaded_dict = torch.load(path, map_location=self.device)
+        self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'])
+        if load_optimizer:
+            self.alg.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
+        self.current_learning_iteration = loaded_dict['iter']
+        return loaded_dict['infos']
+
+    def get_inference_policy(self, device=None, stochastic=False):
+        self.alg.actor_critic.eval() # switch to evaluation mode (dropout for example)
+        if device is not None:
+            self.alg.actor_critic.to(device)
+        if not stochastic:
+            return self.alg.actor_critic.act_inference
+        else:
+            return self.alg.actor_critic.act

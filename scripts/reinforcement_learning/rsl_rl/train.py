@@ -9,6 +9,12 @@
 
 import argparse
 import sys
+from pathlib import Path
+
+DOG_LAB_ROOT = Path(__file__).resolve().parents[3]
+LOCO_RSL_RL_ROOT = DOG_LAB_ROOT / "third_party" / "loco_rsl_rl"
+if LOCO_RSL_RL_ROOT.is_dir():
+    sys.path.insert(0, str(LOCO_RSL_RL_ROOT))
 
 from isaaclab.app import AppLauncher
 
@@ -62,13 +68,11 @@ from isaaclab.envs import (
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import dump_pickle, dump_yaml
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+sys.path.insert(0, str(DOG_LAB_ROOT))
 
 import dog_lab  # noqa: F401
 import isaaclab_tasks  # noqa: F401
+from dog_lab.tasks.go2w_piper.loco_info_wrapper import LocoInfoWrapper
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
@@ -76,6 +80,49 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
+
+
+def _build_loco_train_cfg(agent_cfg: RslRlOnPolicyRunnerCfg) -> dict:
+    """Convert Isaac Lab runner config into the Loco-Manipulation RSL-RL schema."""
+
+    return {
+        "runner": {
+            "policy_class_name": "ActorCritic",
+            "algorithm_class_name": "PPO",
+            "num_steps_per_env": agent_cfg.num_steps_per_env,
+            "save_interval": agent_cfg.save_interval,
+        },
+        "policy": {
+            "init_std": agent_cfg.loco_init_std,
+            "actor_hidden_dims": agent_cfg.policy.actor_hidden_dims,
+            "critic_hidden_dims": agent_cfg.policy.critic_hidden_dims,
+            "activation": agent_cfg.policy.activation,
+            "leg_control_head_hidden_dims": agent_cfg.loco_leg_control_head_hidden_dims,
+            "arm_control_head_hidden_dims": agent_cfg.loco_arm_control_head_hidden_dims,
+            "priv_encoder_dims": agent_cfg.loco_priv_encoder_dims,
+            "cost_hidden_dims": agent_cfg.loco_cost_hidden_dims,
+        },
+        "algorithm": {
+            "value_loss_coef": agent_cfg.algorithm.value_loss_coef,
+            "use_clipped_value_loss": agent_cfg.algorithm.use_clipped_value_loss,
+            "clip_param": agent_cfg.algorithm.clip_param,
+            "entropy_coef": agent_cfg.algorithm.entropy_coef,
+            "num_learning_epochs": agent_cfg.algorithm.num_learning_epochs,
+            "num_mini_batches": agent_cfg.algorithm.num_mini_batches,
+            "learning_rate": agent_cfg.algorithm.learning_rate,
+            "schedule": agent_cfg.algorithm.schedule,
+            "gamma": agent_cfg.algorithm.gamma,
+            "lam": agent_cfg.algorithm.lam,
+            "desired_kl": agent_cfg.algorithm.desired_kl,
+            "max_grad_norm": agent_cfg.algorithm.max_grad_norm,
+            "min_policy_std": agent_cfg.loco_min_policy_std,
+            "mixing_schedule": agent_cfg.loco_mixing_schedule,
+            "dagger_update_freq": agent_cfg.loco_dagger_update_freq,
+            "priv_reg_coef_schedual": agent_cfg.loco_priv_reg_coef_schedual,
+            "cost_value_loss_coef": agent_cfg.loco_cost_value_loss_coef,
+            "cost_viol_loss_coef": agent_cfg.loco_cost_viol_loss_coef,
+        },
+    }
 
 
 @hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
@@ -128,13 +175,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
-    # wrap around environment for rsl-rl
+    # add Loco-Manipulation signals to infos, then use the standard Isaac Lab RSL-RL wrapper
+    env = LocoInfoWrapper(env)
     env = RslRlVecEnvWrapper(env)
 
     # create runner from rsl-rl
-    runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
-    # write git state to logs
-    runner.add_git_repo_to_log(__file__)
+    print(f"[INFO] Using Loco-Manipulation rsl_rl from: {LOCO_RSL_RL_ROOT}")
+    runner = OnPolicyRunner(env, _build_loco_train_cfg(agent_cfg), log_dir=log_dir, device=agent_cfg.device)
     # load the checkpoint
     if agent_cfg.resume:
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")

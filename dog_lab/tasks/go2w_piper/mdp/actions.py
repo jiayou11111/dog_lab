@@ -74,3 +74,6 @@ class FixedJointPositionActionCfg(ActionTermCfg):
 
     action_dim: int = 0
     """Number of policy action dimensions to consume while holding the joints fixed."""
+
+
+__all__ = ["FixedJointPositionAction", "FixedJointPositionActionCfg"]

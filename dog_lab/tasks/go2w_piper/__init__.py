@@ -16,8 +16,8 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.flat_env_cfg:Go2wPiperFlatEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.flat_env_cfg:Go2wPiperFlatEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
     },
 )
 
@@ -26,8 +26,8 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.flat_env_cfg:Go2wPiperFlatEnvCfg_PLAY",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.flat_env_cfg:Go2wPiperFlatEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
     },
 )
 
@@ -36,8 +36,8 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.rough_env_cfg:Go2wPiperRoughEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.rough_env_cfg:Go2wPiperRoughEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
     },
 )
 
@@ -46,8 +46,8 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.rough_env_cfg:Go2wPiperRoughEnvCfg_PLAY",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.rough_env_cfg:Go2wPiperRoughEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
     },
 )
 
@@ -57,8 +57,8 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.flat_env_cfg:Go2wPiperFlatEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.flat_env_cfg:Go2wPiperFlatEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
     },
 )
 
@@ -67,8 +67,8 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.flat_env_cfg:Go2wPiperFlatEnvCfg_PLAY",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.flat_env_cfg:Go2wPiperFlatEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperFlatPPORunnerCfg",
     },
 )
 
@@ -77,8 +77,8 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.rough_env_cfg:Go2wPiperRoughEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.rough_env_cfg:Go2wPiperRoughEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
     },
 )
 
@@ -87,7 +87,7 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.rough_env_cfg:Go2wPiperRoughEnvCfg_PLAY",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.config.rough_env_cfg:Go2wPiperRoughEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperRoughPPORunnerCfg",
     },
 )

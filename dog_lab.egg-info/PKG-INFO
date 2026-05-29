@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: dog_lab
+Version: 0.1.0
+Summary: Go2W-Piper assets and tasks maintained outside Isaac Lab core.
+Home-page: 
+Author: Dog Lab Developers
+Maintainer: Dog Lab Developers
+Keywords: robotics,isaaclab,go2w,piper,locomotion,manipulation
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Isaac Sim :: 4.5.0
+Requires-Python: >=3.10
+Dynamic: author
+Dynamic: classifier
+Dynamic: keywords
+Dynamic: maintainer
+Dynamic: requires-python
+Dynamic: summary

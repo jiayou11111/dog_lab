@@ -18,8 +18,8 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 from dog_lab.assets.robots.go2w_piper import GO2W_PIPER_CFG  # isort: skip
 
 from .. import mdp as go2w_mdp
-from ..actions import FixedJointPositionActionCfg
-from ..loco_migration_cfg import LOCO_CONSTRAINTS, STAGE_ONE_CONTROL
+from ..mdp.actions import FixedJointPositionActionCfg
+from .loco_params import LOCO_CONSTRAINTS, LOCO_CONTROL
 
 
 @configclass
@@ -72,7 +72,7 @@ class LocoP3OCostCfg:
 class LocoRunnerEnvCfg:
     """Shape metadata required by the Loco-Manipulation RSL-RL fork."""
 
-    num_proprio = 73
+    num_proprio = 71
     num_priv = 22
     history_len = 10
     num_leg_actions = 16
@@ -150,23 +150,23 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Stage 1 control split from Loco Go2wPiperCfg:
         # - 12 leg joints use position targets with action_scale=0.25.
         # - 4 foot wheel joints use velocity targets with action_scale_vel=10.0.
-        # - Piper arm is held at the default pose by a 0-D action term.
+        # - Piper arm consumes 6 policy dimensions but is held at the default pose.
         self.actions.joint_pos = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
-            scale=STAGE_ONE_CONTROL.leg_action_scale,
+            scale=LOCO_CONTROL.leg_action_scale,
             use_default_offset=True,
         )
         self.actions.wheel_vel = mdp.JointVelocityActionCfg(
             asset_name="robot",
             joint_names=[".*_foot_joint"],
-            scale=STAGE_ONE_CONTROL.wheel_action_scale_vel,
+            scale=LOCO_CONTROL.wheel_action_scale_vel,
             use_default_offset=True,
         )
         self.actions.arm_hold = FixedJointPositionActionCfg(
             asset_name="robot",
             joint_names=["joint[1-6]"],
-            action_dim=STAGE_ONE_CONTROL.num_arm_actions,
+            action_dim=LOCO_CONTROL.num_arm_actions,
         )
 
         # Velocity commands from the gym task: no lateral command, heading command enabled.
@@ -209,7 +209,7 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=go2w_mdp.BASE_JOINTS)
         self.rewards.action_rate_l2.weight = -0.01
         self.rewards.action_rate_l2.func = go2w_mdp.base_action_rate_l2
-        self.rewards.action_rate_l2.params = {"num_base_actions": STAGE_ONE_CONTROL.num_base_actions}
+        self.rewards.action_rate_l2.params = {"num_base_actions": LOCO_CONTROL.num_base_actions}
         self.rewards.track_lin_vel_xy_exp.weight = 2.0
         self.rewards.track_ang_vel_z_exp.weight = 1.0
         self.rewards.lin_vel_z_l2.weight = -0.2

@@ -29,9 +29,14 @@ class OnPolicyRunner:
                  log_dir=None,
                  device='cpu'):
 
-        self.cfg=train_cfg["runner"]
-        self.alg_cfg = train_cfg["algorithm"]
-        self.policy_cfg = train_cfg["policy"]
+        if "runner" in train_cfg:
+            self.cfg = train_cfg["runner"]
+            self.alg_cfg = train_cfg["algorithm"]
+            self.policy_cfg = train_cfg["policy"]
+        else:
+            self.cfg = train_cfg
+            self.alg_cfg = dict(train_cfg["algorithm"])
+            self.policy_cfg = dict(train_cfg["policy"])
         self.device = device
         self.env = env
         self.num_proprio = env.cfg.loco_runner.num_proprio
@@ -56,7 +61,14 @@ class OnPolicyRunner:
             device=self.device,
         )
         num_critic_obs = self.env.num_privileged_obs if self.env.num_privileged_obs is not None else self.env.num_obs
-        actor_critic_class = eval(self.cfg["policy_class_name"]) # ActorCritic
+        policy_class_name = self.cfg.get("policy_class_name", self.policy_cfg.pop("class_name", "ActorCritic"))
+        algorithm_class_name = self.cfg.get("algorithm_class_name", self.alg_cfg.pop("class_name", "PPO"))
+        if "init_noise_std" in self.policy_cfg and "init_std" not in self.policy_cfg:
+            self.policy_cfg["init_std"] = self.policy_cfg.pop("init_noise_std")
+        else:
+            self.policy_cfg.pop("init_noise_std", None)
+
+        actor_critic_class = eval(policy_class_name) # ActorCritic
         actor_critic: ActorCritic = actor_critic_class( self.num_proprio,
                                                         self.num_proprio,
                                                         env.num_actions,
@@ -68,7 +80,7 @@ class OnPolicyRunner:
                                                         num_prop=self.num_proprio,
                                                         num_costs=self.num_costs
                                                         ).to(self.device)
-        alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
+        alg_class = eval(algorithm_class_name) # PPO
         self.alg_cfg['k_value'] = self.cost_k_values
         self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
@@ -134,12 +146,8 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs, hist_encoding)
-                    obs, rewards, dones, infos = self.env.step(actions)
-                    loco_infos = infos["loco"]
-                    leg_rewards = loco_infos["leg_rewards"]
-                    arm_rewards = loco_infos["arm_rewards"]
-                    costs = loco_infos["costs"]
-                    critic_obs = infos["observations"].get("critic", obs)
+                    obs, privileged_obs, leg_rewards, arm_rewards, costs, dones, infos = self.env.step(actions)
+                    critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, leg_rewards, arm_rewards, costs, dones = obs.to(self.device), critic_obs.to(self.device), leg_rewards.to(self.device), arm_rewards.to(self.device), costs.to(self.device), dones.to(self.device)
                     self.alg.process_env_step(leg_rewards, arm_rewards, costs, dones, infos)
 

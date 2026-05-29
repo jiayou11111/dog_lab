@@ -3,12 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Configuration values migrated from Loco-Manipulation Go2W-Piper.
-
-Stage 1 uses the standard Isaac Lab PPO runner and fixes the arm at its default
-pose. The P2O/ROA and cost values are kept here as explicit migration anchors so
-they can be wired into a custom runner later without hunting through the source.
-"""
+"""Loco-Manipulation parameters used by the Go2W-Piper environment configs."""
 
 from __future__ import annotations
 
@@ -16,8 +11,8 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class StageOneControlCfg:
-    """Base-only control split for the first training stage."""
+class LocoControlCfg:
+    """Action split and scaling migrated from Loco-Manipulation."""
 
     num_leg_actions: int = 12
     num_wheel_actions: int = 4
@@ -29,9 +24,9 @@ class StageOneControlCfg:
 
 @dataclass(frozen=True)
 class LocoConstraintCfg:
-    """Dormant P2O/ROA cost values migrated from Loco-Manipulation."""
+    """P3O cost values migrated from Loco-Manipulation."""
 
-    enabled: bool = False
+    enabled: bool = True
     num_costs: int = 2
     dof_pos_limits_scale: float = 0.1
     dof_vel_limits_scale: float = 0.01
@@ -41,5 +36,5 @@ class LocoConstraintCfg:
     cost_viol_loss_coef: float = 1.0
 
 
-STAGE_ONE_CONTROL = StageOneControlCfg()
+LOCO_CONTROL = LocoControlCfg()
 LOCO_CONSTRAINTS = LocoConstraintCfg()

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 class LocoControlCfg:
     """Action split and scaling migrated from Loco-Manipulation."""
 
-    num_leg_actions: int = 12
+    num_leg_actions: int = 16
     num_wheel_actions: int = 4
     num_arm_actions: int = 6
     num_base_actions: int = 16

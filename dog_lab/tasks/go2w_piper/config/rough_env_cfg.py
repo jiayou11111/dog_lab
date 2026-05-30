@@ -5,11 +5,15 @@
 
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
+import torch
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 
 ##
@@ -18,8 +22,22 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 from dog_lab.assets.robots.go2w_piper import GO2W_PIPER_CFG  # isort: skip
 
 from .. import mdp as go2w_mdp
-from ..mdp.actions import FixedJointPositionActionCfg
+from ..mdp.actions import LocoArmIKActionCfg, LocoBaseActionCfg
 from .loco_params import LOCO_CONSTRAINTS, LOCO_CONTROL
+
+
+GO2W_PIPER_EE_BODY = "link7"
+
+
+def _make_loco_proprio_noise() -> Unoise:
+    """Loco-Manipulation hand-tuned proprioceptive observation noise."""
+
+    scale = torch.zeros(71)
+    scale[0:2] = 0.02
+    scale[2:5] = 0.2 * 0.25
+    scale[5:27] = 0.01
+    scale[27:49] = 1.5 * 0.05
+    return Unoise(n_min=-scale, n_max=scale)
 
 
 @configclass
@@ -44,8 +62,18 @@ class LocoRewardSplitCfg:
         "joint_power",
         "joint_mirror",
     )
-    arm_terms = ("arm_stage1_zero",)
+    arm_terms = ("tracking_ee_cart_world", "tracking_ee_orn")
     only_positive_rewards = True
+
+
+@configclass
+class LocoGraspRewardSplitCfg(LocoRewardSplitCfg):
+    """Backward-compatible alias for older grasp task ids.
+
+    The upstream Loco-Manipulation task tracks internally sampled end-effector
+    goals instead of a physical object, so this split is identical to the base
+    Loco reward split.
+    """
 
 
 @configclass
@@ -92,6 +120,7 @@ class LocoObservationsCfg:
                 "command_name": "base_velocity",
                 "asset_cfg": SceneEntityCfg("robot", joint_names=go2w_mdp.BASE_JOINTS),
             },
+            noise=_make_loco_proprio_noise(),
         )
         priv = ObsTerm(func=go2w_mdp.loco_privileged_obs, params={})
         proprio_history = ObsTerm(
@@ -100,6 +129,7 @@ class LocoObservationsCfg:
                 "command_name": "base_velocity",
                 "asset_cfg": SceneEntityCfg("robot", joint_names=go2w_mdp.BASE_JOINTS),
             },
+            noise=_make_loco_proprio_noise(),
             history_length=10,
             flatten_history_dim=True,
         )
@@ -147,25 +177,26 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.sim.render_interval = self.decimation
         self.episode_length_s = 20.0
 
-        # Stage 1 control split from Loco Go2wPiperCfg:
+        # Loco Go2wPiper control split:
         # - 12 leg joints use position targets with action_scale=0.25.
         # - 4 foot wheel joints use velocity targets with action_scale_vel=10.0.
-        # - Piper arm consumes 6 policy dimensions but is held at the default pose.
-        self.actions.joint_pos = mdp.JointPositionActionCfg(
+        # - Piper arm consumes 6 policy dimensions but follows internally
+        #   sampled end-effector goals through DLS IK, matching legged-gym.
+        self.actions.joint_pos = None
+        self.actions.wheel_vel = None
+        self.actions.loco_base = LocoBaseActionCfg(
             asset_name="robot",
-            joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
-            scale=LOCO_CONTROL.leg_action_scale,
-            use_default_offset=True,
+            joint_names=go2w_mdp.BASE_JOINTS,
+            wheel_joint_names=go2w_mdp.WHEEL_JOINTS,
+            action_dim=LOCO_CONTROL.num_base_actions,
+            position_scale=LOCO_CONTROL.leg_action_scale,
+            velocity_scale=LOCO_CONTROL.wheel_action_scale_vel,
         )
-        self.actions.wheel_vel = mdp.JointVelocityActionCfg(
+        self.actions.arm_hold = None
+        self.actions.arm_ik = LocoArmIKActionCfg(
             asset_name="robot",
-            joint_names=[".*_foot_joint"],
-            scale=LOCO_CONTROL.wheel_action_scale_vel,
-            use_default_offset=True,
-        )
-        self.actions.arm_hold = FixedJointPositionActionCfg(
-            asset_name="robot",
-            joint_names=["joint[1-6]"],
+            joint_names=go2w_mdp.ARM_JOINTS,
+            ee_body_name=GO2W_PIPER_EE_BODY,
             action_dim=LOCO_CONTROL.num_arm_actions,
         )
 
@@ -176,14 +207,28 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.heading = (-1.57, 1.57)
         self.commands.base_velocity.heading_command = True
         self.commands.base_velocity.heading_control_stiffness = 2.0
+        self.commands.base_velocity.debug_vis = False
 
-        # Domain randomization mirrors the imported legged-gym values where Lab has built-in events.
+        # Domain randomization mirrors the imported legged-gym values and keeps the
+        # privileged observation samples synchronized with the applied physics.
         self.events.push_robot = None
-        self.events.physics_material.params["static_friction_range"] = (0.8, 1.0)
-        self.events.physics_material.params["dynamic_friction_range"] = (0.8, 1.0)
-        self.events.physics_material.params["restitution_range"] = (0.0, 0.3)
-        self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 1.0)
-        self.events.add_base_mass.params["asset_cfg"].body_names = "base"
+        self.events.physics_material = None
+        self.events.add_base_mass = None
+        self.events.randomize_base_com = None
+        self.events.add_gripper_mass = None
+        self.events.randomize_loco_domain = EventTerm(
+            func=go2w_mdp.randomize_loco_physics_and_privileged_params,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot"),
+                "base_body_name": "base",
+                "gripper_body_name": GO2W_PIPER_EE_BODY,
+            },
+        )
+        self.events.randomize_loco_priv = None
+        self.events.reset_loco_priv = None
+        self.events.randomize_leg_gains = None
+        self.events.randomize_arm_gains = None
         self.events.base_external_force_torque.params["asset_cfg"].body_names = "base"
         self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)
         self.events.reset_base.params = {
@@ -269,24 +314,66 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 )
             },
         )
+        self.rewards.hip_deviation = None
+        self.rewards.foot_lateral_distance = None
         self.rewards.arm_deviation = RewTerm(
             func=go2w_mdp.arm_deviation_l2,
             weight=0.0,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=go2w_mdp.ARM_JOINTS)},
         )
-        self.rewards.arm_stage1_zero = RewTerm(
-            func=go2w_mdp.zero_arm_reward,
-            weight=0.0,
-            params={},
+        self.rewards.arm_stage1_zero = None
+        self.rewards.tracking_ee_cart_world = RewTerm(
+            func=go2w_mdp.tracking_ee_cart_world,
+            weight=1.0,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=GO2W_PIPER_EE_BODY), "tracking_ee_sigma": 1.0},
+        )
+        self.rewards.tracking_ee_orn = RewTerm(
+            func=go2w_mdp.tracking_ee_orn,
+            weight=0.5,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=GO2W_PIPER_EE_BODY), "tracking_ee_sigma": 1.0},
         )
 
         self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
+        self.terminations.illegal_base_state = DoneTerm(func=go2w_mdp.illegal_base_state)
+
+
+@configclass
+class Go2wPiperRoughGraspEnvCfg(Go2wPiperRoughEnvCfg):
+    """Compatibility name for the Loco final task.
+
+    Older local scripts used "Grasp" for this task, but the upstream
+    Loco-Manipulation environment does not spawn a cube or run a gripper grasp.
+    It trains chassis locomotion plus Piper IK tracking of random EE goals.
+    """
+
+    loco_reward_split: LocoGraspRewardSplitCfg = LocoGraspRewardSplitCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
 
 
 @configclass
 class Go2wPiperRoughEnvCfg_PLAY(Go2wPiperRoughEnvCfg):
     def __post_init__(self):
         # post init of parent
+        super().__post_init__()
+
+        self.scene.num_envs = 1
+        self.scene.env_spacing = 2.5
+        self.scene.terrain.max_init_terrain_level = None
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.num_rows = 5
+            self.scene.terrain.terrain_generator.num_cols = 5
+            self.scene.terrain.terrain_generator.curriculum = False
+
+        self.observations.policy.enable_corruption = False
+        self.events.base_external_force_torque = None
+        self.events.push_robot = None
+
+
+@configclass
+class Go2wPiperRoughGraspEnvCfg_PLAY(Go2wPiperRoughGraspEnvCfg):
+    def __post_init__(self):
         super().__post_init__()
 
         self.scene.num_envs = 1

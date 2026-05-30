@@ -1,0 +1,101 @@
+import numpy as np
+from pathlib import Path
+
+
+DEPLOY_MUJOCO_ROOT = Path(__file__).resolve().parent
+
+class Go2wPiperCfg:
+    class env:
+        num_leg_actions = 16
+        num_arm_actions = 6
+        num_actions = num_leg_actions + num_arm_actions
+        num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3
+        history_len = 10
+
+    class goal_ee:
+        traj_timesteps = 100
+        hold_timesteps = 50
+        vis_enabled_points = ("start", "actual", "target")
+        vis_point_size = 0.02
+
+        class ranges:
+            init_pos_start = [0.5, 0.3, 0]
+            init_pos_end = [0.5, 0.6, 0]
+            pos_l = [0.5, 0.6]
+            pos_p = [-np.pi/8, np.pi/4]
+            pos_y = [-0.8, 0.8]
+            
+            default_ee_rpy = [0, np.pi/2, -np.pi/2]
+            delta_orn_r = [-0.1, 0.1]
+            delta_orn_p = [-0.1, 0.1]
+            delta_orn_y = [-0.1, 0.1]
+
+    class commands:
+        num_commands = 4
+        heading_command = True # if true: compute ang vel command from heading error
+        class ranges:
+            lin_vel_x = [-1, 1] # min max [m/s]
+            lin_vel_y = [-0.5, 0.5]   # min max [m/s]
+            ang_vel_yaw = [-1, 1]    # min max [rad/s]
+            heading = [-1.0, 1.0]
+
+    class asset:
+        file = str(DEPLOY_MUJOCO_ROOT / "robots" / "go2w_piper" / "scene.xml")
+        actor_path = str(DEPLOY_MUJOCO_ROOT / "pre_train" / "go2w_piper_cost" / "traced_actor.pt")
+        hist_encoder_path = str(DEPLOY_MUJOCO_ROOT / "pre_train" / "go2w_piper_cost" / "traced_hist_encoder.pt")
+        wheel_names = ["FL_wheel_joint", "FR_wheel_joint", "RL_wheel_joint", "RR_wheel_joint"]
+
+    class control:
+        # PD Drive parameters:
+        stiffness = {'hip_joint': 40.,'thigh_joint': 40.,'calf_joint': 40.,"wheel_joint": 0.}  # [N*m/rad]
+        damping = {'hip_joint': 1,'thigh_joint': 1,'calf_joint': 1,"wheel_joint": 0.5}     # [N*m*s/rad]
+        # action scale: target angle = actionScale * action + defaultAngle
+        action_scale = 0.25
+        action_scale_vel = 10.0
+        # decimation: Number of control action updates @ sim DT per policy DT
+        decimation = 2
+
+    class init_state:
+        default_joint_angles = { # = target angles [rad] when action = 0.0
+            'FL_hip_joint': 0.0,   # [rad]
+            'RL_hip_joint': 0.0,   # [rad]
+            'FR_hip_joint': 0.0 ,  # [rad]
+            'RR_hip_joint': 0.0,   # [rad]
+
+            'FL_thigh_joint': 0.67,   # [rad]
+            'RL_thigh_joint': 0.67,   # [rad]
+            'FR_thigh_joint': 0.67,   # [rad]
+            'RR_thigh_joint': 0.67,   # [rad]
+
+            'FL_calf_joint': -1.3,    # [rad]
+            'RL_calf_joint': -1.3,    # [rad]
+            'FR_calf_joint': -1.3,    # [rad]
+            'RR_calf_joint': -1.3,    # [rad]
+            
+            'FL_wheel_joint': 0.0,
+            'RL_wheel_joint': 0.0,
+            'FR_wheel_joint': 0.0,
+            'RR_wheel_joint': 0.0,
+
+            # arm joint
+            'joint1': 0.0,
+            'joint2': 0.0,
+            'joint3': 0.0,
+            'joint4': 0.0,
+            'joint5': 0.0,
+            'joint6': 0.0,
+        }
+
+    class domain_rand:
+        randomize_motor = True
+        leg_motor_strength_range = [0.9, 1.1]
+        arm_motor_strength_range = [0.9, 1.1]
+
+    class normalization:
+        class obs_scales:
+            lin_vel = 2.0
+            ang_vel = 0.25
+            dof_pos = 1.0
+            dof_vel = 0.05
+        clip_observations = 100.
+        clip_actions = 100.

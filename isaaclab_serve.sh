@@ -190,3 +190,9 @@ if [[ "${1:-}" == "-p" ]]; then
 else
     exec "$@"
 fi
+
+
+# ./isaaclab_serve.sh -p /path/to/dog_lab/scripts/reinforcement_learning/rsl_rl/train.py \
+#   --task DogLab-Go2W-Piper-Flat-v0 \
+#   --num_envs 4096 \
+#   --headless

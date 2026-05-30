@@ -51,6 +51,46 @@ gym.register(
     },
 )
 
+gym.register(
+    id="DogLab-Go2W-Piper-Flat-Grasp-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.config.flat_env_cfg:Go2wPiperFlatGraspEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperFlatGraspPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="DogLab-Go2W-Piper-Flat-Grasp-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.config.flat_env_cfg:Go2wPiperFlatGraspEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperFlatGraspPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="DogLab-Go2W-Piper-Rough-Grasp-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.config.rough_env_cfg:Go2wPiperRoughGraspEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperRoughGraspPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="DogLab-Go2W-Piper-Rough-Grasp-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.config.rough_env_cfg:Go2wPiperRoughGraspEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.loco_rsl_rl_ppo_cfg:Go2wPiperRoughGraspPPORunnerCfg",
+    },
+)
+
 # Backwards-compatible names for older notes/scripts.
 gym.register(
     id="DogLab-Velocity-Flat-Go2W-Piper-v0",

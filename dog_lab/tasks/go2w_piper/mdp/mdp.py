@@ -11,5 +11,6 @@ New code should import from the category modules in this package:
 
 from .actions import *
 from .costs import *
+from .events import *
 from .rewards import *
 from .terminations import *

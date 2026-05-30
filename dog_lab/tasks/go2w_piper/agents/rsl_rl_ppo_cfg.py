@@ -3,6 +3,16 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from .loco_rsl_rl_ppo_cfg import Go2wPiperFlatPPORunnerCfg, Go2wPiperRoughPPORunnerCfg
+from .loco_rsl_rl_ppo_cfg import (
+    Go2wPiperFlatGraspPPORunnerCfg,
+    Go2wPiperFlatPPORunnerCfg,
+    Go2wPiperRoughGraspPPORunnerCfg,
+    Go2wPiperRoughPPORunnerCfg,
+)
 
-__all__ = ["Go2wPiperFlatPPORunnerCfg", "Go2wPiperRoughPPORunnerCfg"]
+__all__ = [
+    "Go2wPiperFlatGraspPPORunnerCfg",
+    "Go2wPiperFlatPPORunnerCfg",
+    "Go2wPiperRoughGraspPPORunnerCfg",
+    "Go2wPiperRoughPPORunnerCfg",
+]

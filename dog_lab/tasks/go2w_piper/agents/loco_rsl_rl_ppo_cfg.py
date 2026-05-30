@@ -58,3 +58,17 @@ class Go2wPiperFlatPPORunnerCfg(Go2wPiperRoughPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
         self.experiment_name = "go2w_piper_cost"
+
+
+@configclass
+class Go2wPiperRoughGraspPPORunnerCfg(Go2wPiperRoughPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.experiment_name = "go2w_piper_cost"
+
+
+@configclass
+class Go2wPiperFlatGraspPPORunnerCfg(Go2wPiperFlatPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.experiment_name = "go2w_piper_cost"

@@ -16,6 +16,19 @@ LOCO_RSL_RL_ROOT = DOG_LAB_ROOT / "third_party" / "loco_rsl_rl"
 if LOCO_RSL_RL_ROOT.is_dir():
     sys.path.insert(0, str(LOCO_RSL_RL_ROOT))
 
+if sys.platform == "win32":
+    # Isaac Sim ships HDF5 DLLs used by native sensor plugins. Load its h5py first so
+    # IsaacLab's later h5py import reuses the same DLL family instead of conda's.
+    import os
+
+    isaac_path = os.environ.get("ISAAC_PATH")
+    if isaac_path:
+        kit_site_packages = Path(isaac_path) / "kit" / "python" / "Lib" / "site-packages"
+        if kit_site_packages.is_dir():
+            sys.path.insert(0, str(kit_site_packages))
+            import h5py  # noqa: F401
+            sys.path.pop(0)
+
 from isaaclab.app import AppLauncher
 
 # local imports
@@ -161,3 +174,5 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+
+# .\isaaclab.bat -p F:\DOG\dog_lab\scripts\reinforcement_learning\rsl_rl\train.py --task DogLab-Go2W-Piper-Flat-v0 --num_envs 1 --max_iterations 100

@@ -10,6 +10,7 @@ from __future__ import annotations
 import torch
 
 from isaaclab.assets import Articulation
+from isaaclab.utils import math as math_utils
 
 BASE_JOINTS = [".*_hip_joint", ".*_thigh_joint", ".*_calf_joint", ".*_foot_joint"]
 ARM_JOINTS = ["joint[1-6]"]
@@ -41,3 +42,24 @@ def local_joint_ids(asset: Articulation, selected_joint_ids: list[int] | slice, 
         selected_joint_ids = list(range(asset.num_joints))[selected_joint_ids]
     global_to_local = {joint_id: i for i, joint_id in enumerate(selected_joint_ids)}
     return [global_to_local[joint_id] for joint_id in matched_ids if joint_id in global_to_local]
+
+
+def sphere_to_cart(sphere: torch.Tensor) -> torch.Tensor:
+    """Convert Loco's ``(length, pitch, yaw)`` EE-goal sphere coordinates to Cartesian."""
+
+    length, pitch, yaw = sphere[:, 0], sphere[:, 1], sphere[:, 2]
+    radius_xy = length * torch.cos(pitch)
+    return torch.stack(
+        (
+            radius_xy * torch.cos(yaw),
+            radius_xy * torch.sin(yaw),
+            length * torch.sin(pitch),
+        ),
+        dim=-1,
+    )
+
+
+def orientation_error(desired_quat_w: torch.Tensor, current_quat_w: torch.Tensor) -> torch.Tensor:
+    """Axis-angle orientation error matching the sign convention used by differential IK."""
+
+    return math_utils.quat_box_minus(desired_quat_w, current_quat_w)

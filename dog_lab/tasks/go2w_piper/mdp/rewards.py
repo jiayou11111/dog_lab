@@ -48,7 +48,7 @@ def loco_policy_proprio(
     asset: Articulation = env.scene[asset_cfg.name]
     roll_pitch = base_roll_pitch(asset)
     base_ang_vel = asset.data.root_ang_vel_b * 0.25
-    all_joint_ids, _ = asset.find_joints(BASE_JOINTS + ARM_JOINTS, preserve_order=False)
+    all_joint_ids, _ = asset.find_joints(BASE_JOINTS + ARM_JOINTS, preserve_order=True)
     joint_pos = asset.data.joint_pos[:, all_joint_ids]
     default_joint_pos = asset.data.default_joint_pos[:, all_joint_ids]
     joint_err = joint_pos - default_joint_pos

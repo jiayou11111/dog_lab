@@ -12,9 +12,26 @@ import torch
 from isaaclab.assets import Articulation
 from isaaclab.utils import math as math_utils
 
-BASE_JOINTS = [".*_hip_joint", ".*_thigh_joint", ".*_calf_joint", ".*_foot_joint"]
-ARM_JOINTS = ["joint[1-6]"]
-WHEEL_JOINTS = [".*_foot_joint"]
+BASE_JOINTS = [
+    "FL_hip_joint",
+    "FL_thigh_joint",
+    "FL_calf_joint",
+    "FL_foot_joint",
+    "FR_hip_joint",
+    "FR_thigh_joint",
+    "FR_calf_joint",
+    "FR_foot_joint",
+    "RL_hip_joint",
+    "RL_thigh_joint",
+    "RL_calf_joint",
+    "RL_foot_joint",
+    "RR_hip_joint",
+    "RR_thigh_joint",
+    "RR_calf_joint",
+    "RR_foot_joint",
+]
+ARM_JOINTS = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
+WHEEL_JOINTS = ["FL_foot_joint", "FR_foot_joint", "RL_foot_joint", "RR_foot_joint"]
 
 
 def base_roll_pitch(asset: Articulation) -> torch.Tensor:
@@ -37,7 +54,7 @@ def base_joint_error_without_wheels(asset: Articulation, joint_ids: list[int] | 
 
 
 def local_joint_ids(asset: Articulation, selected_joint_ids: list[int] | slice, joint_name_patterns: list[str]) -> list[int]:
-    matched_ids, _ = asset.find_joints(joint_name_patterns, preserve_order=False)
+    matched_ids, _ = asset.find_joints(joint_name_patterns, preserve_order=True)
     if isinstance(selected_joint_ids, slice):
         selected_joint_ids = list(range(asset.num_joints))[selected_joint_ids]
     global_to_local = {joint_id: i for i, joint_id in enumerate(selected_joint_ids)}

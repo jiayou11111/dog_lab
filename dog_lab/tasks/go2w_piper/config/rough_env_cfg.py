@@ -203,6 +203,7 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             asset_name="robot",
             joint_names=go2w_mdp.BASE_JOINTS,
             wheel_joint_names=go2w_mdp.WHEEL_JOINTS,
+            preserve_order=True,
             action_dim=LOCO_CONTROL.num_base_actions,
             position_scale=LOCO_CONTROL.leg_action_scale,
             velocity_scale=LOCO_CONTROL.wheel_action_scale_vel,
@@ -212,6 +213,7 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             asset_name="robot",
             joint_names=go2w_mdp.ARM_JOINTS,
             ee_body_name=GO2W_PIPER_EE_BODY,
+            preserve_order=True,
             action_dim=LOCO_CONTROL.num_arm_actions,
         )
 

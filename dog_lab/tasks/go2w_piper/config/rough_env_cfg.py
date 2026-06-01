@@ -29,15 +29,30 @@ from .loco_params import LOCO_CONSTRAINTS, LOCO_CONTROL
 GO2W_PIPER_EE_BODY = "link7"
 
 
+def _loco_uniform_noise(data: torch.Tensor, cfg: Unoise) -> torch.Tensor:
+    """Uniform noise that keeps Hydra config values primitive and tensors at runtime."""
+
+    n_min = torch.as_tensor(cfg.n_min, device=data.device, dtype=data.dtype)
+    n_max = torch.as_tensor(cfg.n_max, device=data.device, dtype=data.dtype)
+    if cfg.operation == "add":
+        return data + torch.rand_like(data) * (n_max - n_min) + n_min
+    elif cfg.operation == "scale":
+        return data * (torch.rand_like(data) * (n_max - n_min) + n_min)
+    elif cfg.operation == "abs":
+        return torch.rand_like(data) * (n_max - n_min) + n_min
+    else:
+        raise ValueError(f"Unknown operation in noise: {cfg.operation}")
+
+
 def _make_loco_proprio_noise() -> Unoise:
     """Loco-Manipulation hand-tuned proprioceptive observation noise."""
 
-    scale = torch.zeros(71)
-    scale[0:2] = 0.02
-    scale[2:5] = 0.2 * 0.25
-    scale[5:27] = 0.01
-    scale[27:49] = 1.5 * 0.05
-    return Unoise(n_min=-scale, n_max=scale)
+    scale = [0.0] * 71
+    scale[0:2] = [0.02] * 2
+    scale[2:5] = [0.2 * 0.25] * 3
+    scale[5:27] = [0.01] * 22
+    scale[27:49] = [1.5 * 0.05] * 22
+    return Unoise(func=_loco_uniform_noise, n_min=[-value for value in scale], n_max=scale)
 
 
 @configclass
@@ -232,7 +247,7 @@ class Go2wPiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.base_external_force_torque.params["asset_cfg"].body_names = "base"
         self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)
         self.events.reset_base.params = {
-            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "pose_range": {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "yaw": (-3.14, 3.14)},
             "velocity_range": {
                 "x": (-0.5, 0.5),
                 "y": (-0.5, 0.5),
@@ -367,6 +382,7 @@ class Go2wPiperRoughEnvCfg_PLAY(Go2wPiperRoughEnvCfg):
             self.scene.terrain.terrain_generator.curriculum = False
 
         self.observations.policy.enable_corruption = False
+        self.events.randomize_loco_domain = None
         self.events.base_external_force_torque = None
         self.events.push_robot = None
 
@@ -385,5 +401,6 @@ class Go2wPiperRoughGraspEnvCfg_PLAY(Go2wPiperRoughGraspEnvCfg):
             self.scene.terrain.terrain_generator.curriculum = False
 
         self.observations.policy.enable_corruption = False
+        self.events.randomize_loco_domain = None
         self.events.base_external_force_torque = None
         self.events.push_robot = None

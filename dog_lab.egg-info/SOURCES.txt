@@ -25,6 +25,5 @@ dog_lab/tasks/go2w_piper/config/rough_env_cfg.py
 dog_lab/tasks/go2w_piper/mdp/__init__.py
 dog_lab/tasks/go2w_piper/mdp/actions.py
 dog_lab/tasks/go2w_piper/mdp/costs.py
-dog_lab/tasks/go2w_piper/mdp/mdp.py
 dog_lab/tasks/go2w_piper/mdp/rewards.py
 dog_lab/tasks/go2w_piper/mdp/terminations.py

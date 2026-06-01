@@ -38,9 +38,34 @@ class StateHistoryEncoder(nn.Module):
         nd = obs.shape[0]
         T = self.tsteps
         projection = self.encoder(obs.reshape([nd * T, -1])) # do projection for n_proprio -> 32
-        output = self.conv_layers(projection.reshape([nd, T, -1]).permute((0, 2, 1)))
+        conv_input = projection.reshape([nd, T, -1]).permute((0, 2, 1)).contiguous()
+        output = self._forward_conv_layers_manual(conv_input)
         output = self.linear_output(output)
         return output
+
+    def _forward_conv_layers_manual(self, x):
+        for layer in self.conv_layers:
+            if isinstance(layer, nn.Conv1d):
+                x = self._conv1d_manual(x, layer)
+            elif isinstance(layer, nn.Flatten):
+                x = torch.flatten(x, start_dim=layer.start_dim, end_dim=layer.end_dim)
+            else:
+                x = layer(x)
+        return x
+
+    @staticmethod
+    def _conv1d_manual(x, layer):
+        kernel_size = layer.kernel_size[0]
+        stride = layer.stride[0]
+        dilation = layer.dilation[0]
+        padding = layer.padding[0]
+        if dilation != 1 or padding != 0 or layer.groups != 1:
+            return layer(x)
+        windows = x.unfold(dimension=2, size=kernel_size, step=stride)
+        out = torch.einsum("nclk,ock->nol", windows, layer.weight)
+        if layer.bias is not None:
+            out = out + layer.bias.view(1, -1, 1)
+        return out
     
 class Actor(nn.Module):
     def __init__(self, mlp_input_dim_a, actor_hidden_dims, activation, \
@@ -84,7 +109,7 @@ class Actor(nn.Module):
     
     def infer_hist_latent(self, obs):
         hist = obs[:, -self.num_hist*self.num_prop:]
-        return self.history_encoder(hist.view(-1, self.num_hist, self.num_prop))
+        return self.history_encoder(hist.reshape(-1, self.num_hist, self.num_prop))
     
 class Critic(nn.Module):
     def __init__(self, mlp_input_dim_c, critic_hidden_dims, activation, \

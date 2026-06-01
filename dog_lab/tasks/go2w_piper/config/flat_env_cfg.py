@@ -10,9 +10,9 @@ from isaaclab.utils import configclass
 from .rough_env_cfg import Go2wPiperRoughEnvCfg, Go2wPiperRoughGraspEnvCfg
 
 
-def _make_flat_terrain_generator(num_rows: int = 64, num_cols: int = 64) -> TerrainGeneratorCfg:
+def _make_flat_terrain_generator(num_rows: int = 64, num_cols: int = 64, size: float = 2.5) -> TerrainGeneratorCfg:
     return TerrainGeneratorCfg(
-        size=(2.5, 2.5),
+        size=(size, size),
         border_width=0.0,
         num_rows=num_rows,
         num_cols=num_cols,
@@ -41,8 +41,9 @@ class Go2wPiperFlatEnvCfg_PLAY(Go2wPiperFlatEnvCfg):
 
         self.scene.num_envs = 1
         self.scene.env_spacing = 2.5
-        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1)
+        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1, size=8.0)
         self.observations.policy.enable_corruption = False
+        self.events.randomize_loco_domain = None
         self.events.base_external_force_torque = None
         self.events.push_robot = None
 
@@ -66,7 +67,8 @@ class Go2wPiperFlatGraspEnvCfg_PLAY(Go2wPiperFlatGraspEnvCfg):
 
         self.scene.num_envs = 1
         self.scene.env_spacing = 2.5
-        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1)
+        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1, size=8.0)
         self.observations.policy.enable_corruption = False
+        self.events.randomize_loco_domain = None
         self.events.base_external_force_torque = None
         self.events.push_robot = None

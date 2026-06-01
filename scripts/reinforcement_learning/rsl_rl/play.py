@@ -43,6 +43,23 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--command_x", type=float, default=1.0, help="Fixed forward velocity command for play.")
+parser.add_argument("--command_y", type=float, default=0.0, help="Fixed lateral velocity command for play.")
+parser.add_argument("--command_yaw", type=float, default=0.0, help="Fixed yaw velocity command for play.")
+parser.add_argument("--command_heading", type=float, default=0.0, help="Fixed heading command for play.")
+parser.add_argument(
+    "--random_commands",
+    action="store_true",
+    default=False,
+    help="Use the task's training command sampler instead of the fixed Loco play command.",
+)
+parser.add_argument(
+    "--priv_encoding",
+    action="store_true",
+    default=False,
+    help="Use privileged latent inference instead of the Loco play history encoder.",
+)
+parser.add_argument("--debug_steps", type=int, default=0, help="Print command/action/state diagnostics for N steps.")
 parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
@@ -91,6 +108,14 @@ def main():
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
     agent_cfg: LocoRslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    if not args_cli.random_commands and hasattr(env_cfg, "commands") and hasattr(env_cfg.commands, "base_velocity"):
+        command_cfg = env_cfg.commands.base_velocity
+        command_cfg.ranges.lin_vel_x = (args_cli.command_x, args_cli.command_x)
+        command_cfg.ranges.lin_vel_y = (args_cli.command_y, args_cli.command_y)
+        command_cfg.ranges.ang_vel_z = (args_cli.command_yaw, args_cli.command_yaw)
+        if command_cfg.heading_command:
+            command_cfg.ranges.heading = (args_cli.command_heading, args_cli.command_heading)
+        command_cfg.rel_standing_envs = 0.0
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -141,19 +166,80 @@ def main():
     # export policy to onnx/jit
     dt = env.unwrapped.physics_dt
 
+    if args_cli.debug_steps > 0:
+        try:
+            loco_base = env.unwrapped.action_manager.get_term("loco_base")
+            wheel_local_ids = list(getattr(loco_base, "_wheel_local_ids", []))
+            wheel_names = [loco_base._joint_names[i] for i in wheel_local_ids]
+            print("[DEBUG] loco_base action map:")
+            for action_id, joint_name in enumerate(loco_base._joint_names):
+                marker = " wheel" if action_id in wheel_local_ids else ""
+                print(f"[DEBUG]   action[{action_id:02d}] -> {joint_name}{marker}")
+            print(f"[DEBUG] wheel_local_ids={wheel_local_ids} wheel_names={wheel_names}")
+            print(
+                "[DEBUG]"
+                f" position_scale={getattr(loco_base.cfg, 'position_scale', None)}"
+                f" velocity_scale={getattr(loco_base.cfg, 'velocity_scale', None)}"
+            )
+        except Exception as exc:
+            print(f"[DEBUG] failed to print loco_base action map: {exc}")
+
     # reset environment
     obs_result = env.get_observations()
     obs = obs_result[0] if isinstance(obs_result, tuple) else obs_result
     timestep = 0
+    debug_step = 0
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
-            actions = policy(obs)
+            actions = policy(obs, hist_encoding=not args_cli.priv_encoding)
+            if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
+                unwrapped = env.unwrapped
+                robot = unwrapped.scene["robot"]
+                command = unwrapped.command_manager.get_command("base_velocity")[0].detach().cpu().tolist()
+                root_pos = robot.data.root_pos_w[0].detach().cpu().tolist()
+                root_vel_b = robot.data.root_lin_vel_b[0].detach().cpu().tolist()
+                root_ang_vel_b = robot.data.root_ang_vel_b[0].detach().cpu().tolist()
+                action0 = actions[0].detach().cpu()
+                base_action0 = action0[:16]
+                wheel_debug = ""
+                try:
+                    loco_base = unwrapped.action_manager.get_term("loco_base")
+                    wheel_local_ids = list(getattr(loco_base, "_wheel_local_ids", []))
+                    wheel_actions = base_action0[wheel_local_ids].tolist()
+                    wheel_vel_from_action = (
+                        base_action0[wheel_local_ids] * getattr(loco_base.cfg, "velocity_scale", 1.0)
+                    ).tolist()
+                    prev_wheel_vel_targets = loco_base._joint_vel_target[0].detach().cpu().tolist()
+                    wheel_joint_ids = list(getattr(loco_base, "_wheel_joint_ids", []))
+                    wheel_joint_vel = robot.data.joint_vel[0, wheel_joint_ids].detach().cpu().tolist()
+                    wheel_debug = (
+                        f" wheel_actions={['%.3f' % x for x in wheel_actions]}"
+                        f" wheel_vel_from_action={['%.3f' % x for x in wheel_vel_from_action]}"
+                        f" prev_wheel_vel_targets={['%.3f' % x for x in prev_wheel_vel_targets]}"
+                        f" wheel_joint_vel={['%.3f' % x for x in wheel_joint_vel]}"
+                    )
+                except Exception as exc:
+                    wheel_debug = f" wheel_debug_error={exc}"
+                print(
+                    "[DEBUG]"
+                    f" step={debug_step}"
+                    f" command={['%.3f' % x for x in command]}"
+                    f" root_z={root_pos[2]:.3f}"
+                    f" lin_vel_b={['%.3f' % x for x in root_vel_b]}"
+                    f" yaw_vel_b={root_ang_vel_b[2]:.3f}"
+                    f" action_mean={action0.mean().item():.3f}"
+                    f" action_absmax={action0.abs().max().item():.3f}"
+                    f" base_action={['%.3f' % x for x in base_action0.tolist()]}"
+                    f"{wheel_debug}"
+                )
             # env stepping
             obs, _, _, _, _, _, _ = env.step(actions)
+            if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
+                debug_step += 1
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video

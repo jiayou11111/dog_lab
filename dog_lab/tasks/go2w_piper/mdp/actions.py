@@ -201,6 +201,7 @@ class LocoArmIKAction(ActionTerm):
         self._raw_actions = torch.zeros(self.num_envs, self.cfg.action_dim, device=self.device)
         self._processed_actions = torch.zeros_like(self._raw_actions)
         self._joint_pos_target = self._asset.data.default_joint_pos[:, self._joint_ids].clone()
+        self._joint_vel_target = torch.zeros_like(self._joint_pos_target)
 
         self._goal_center_offset = torch.tensor(self.cfg.goal_center_offset, device=self.device).repeat(
             self.num_envs, 1
@@ -247,14 +248,27 @@ class LocoArmIKAction(ActionTerm):
         self._update_curr_ee_goal()
 
     def apply_actions(self):
-        ee_pos_b, ee_quat_b = self._compute_ee_pose_b()
-        goal_pos_b, goal_quat_b = self._compute_goal_pose_b()
-        dpose = torch.cat((goal_pos_b - ee_pos_b, orientation_error(goal_quat_b, ee_quat_b)), dim=-1)
-        jacobian = self._compute_jacobian_b()
-        delta_joint_pos = self._solve_dls(jacobian, dpose)
+        ee_pos_w = self._asset.data.body_pos_w[:, self._body_idx]
+        ee_quat_w = self._asset.data.body_quat_w[:, self._body_idx]
+        pos_error = (self.curr_ee_goal_cart_world - ee_pos_w) * self.cfg.position_error_scale
+        orn_error = orientation_error(self.ee_goal_orn_quat, ee_quat_w) * self.cfg.orientation_error_scale
+        dpose = torch.cat((pos_error, orn_error), dim=-1)
+        delta_joint_pos = self._solve_dls(self._compute_jacobian_w(), dpose)
+        delta_joint_pos *= self.cfg.ik_step_scale
+        if self.cfg.max_delta_joint_pos is not None:
+            delta_joint_pos = torch.clamp(
+                delta_joint_pos, -self.cfg.max_delta_joint_pos, self.cfg.max_delta_joint_pos
+            )
         joint_pos = self._asset.data.joint_pos[:, self._joint_ids]
         self._joint_pos_target[:] = joint_pos + delta_joint_pos
+        if self.cfg.joint_limit_avoidance_gain > 0.0:
+            self._joint_pos_target[:] += self._compute_limit_avoidance_delta(joint_pos)
+        if self.cfg.clamp_joint_targets:
+            lower, upper = self._joint_limit_bounds()
+            self._joint_pos_target[:] = torch.clamp(self._joint_pos_target, lower, upper)
         self._asset.set_joint_position_target(self._joint_pos_target, joint_ids=self._joint_ids)
+        if self.cfg.zero_joint_velocity_target:
+            self._asset.set_joint_velocity_target(self._joint_vel_target, joint_ids=self._joint_ids)
 
     def reset(self, env_ids=None) -> None:
         if env_ids is None:
@@ -270,18 +284,21 @@ class LocoArmIKAction(ActionTerm):
 
     def _initialize_goals(self, env_ids: torch.Tensor) -> None:
         init_start = torch.tensor(self.cfg.init_pos_start, device=self.device)
+        init_end = torch.tensor(self.cfg.init_pos_end, device=self.device)
         self.ee_start_sphere[env_ids] = init_start
+        self.ee_goal_sphere[env_ids] = init_end
         self.goal_timer[env_ids] = 0.0
         self._resample_ee_goal_orn_once(env_ids)
-        active_mask = torch.ones(len(env_ids), dtype=torch.bool, device=self.device)
-        for _ in range(10):
-            active_env_ids = env_ids[active_mask]
-            if active_env_ids.numel() == 0:
-                break
-            self._resample_ee_goal_sphere_once(active_env_ids)
-            collision_mask = self._collision_check(active_env_ids)
-            active_mask_ids = active_mask.nonzero(as_tuple=False).flatten()
-            active_mask[active_mask_ids] = collision_mask
+        if self.cfg.sample_initial_goal:
+            active_mask = torch.ones(len(env_ids), dtype=torch.bool, device=self.device)
+            for _ in range(10):
+                active_env_ids = env_ids[active_mask]
+                if active_env_ids.numel() == 0:
+                    break
+                self._resample_ee_goal_sphere_once(active_env_ids)
+                collision_mask = self._collision_check(active_env_ids)
+                active_mask_ids = active_mask.nonzero(as_tuple=False).flatten()
+                active_mask[active_mask_ids] = collision_mask
         self.curr_ee_goal_sphere[env_ids] = self.ee_start_sphere[env_ids]
         self._update_curr_ee_goal(env_ids=env_ids, advance_timer=False)
 
@@ -362,36 +379,43 @@ class LocoArmIKAction(ActionTerm):
         if advance_timer:
             self.goal_timer[env_ids] += 1
             resample_ids = env_ids[self.goal_timer[env_ids] > self.traj_total_timesteps]
-            self._resample_ee_goal(resample_ids)
+            if self.cfg.resample_goals:
+                self._resample_ee_goal(resample_ids)
+            elif resample_ids.numel() > 0:
+                self.goal_timer[resample_ids] = float(self.traj_total_timesteps)
 
-    def _compute_ee_pose_b(self) -> tuple[torch.Tensor, torch.Tensor]:
-        return math_utils.subtract_frame_transforms(
-            self._asset.data.root_pos_w,
-            self._asset.data.root_quat_w,
-            self._asset.data.body_pos_w[:, self._body_idx],
-            self._asset.data.body_quat_w[:, self._body_idx],
-        )
-
-    def _compute_goal_pose_b(self) -> tuple[torch.Tensor, torch.Tensor]:
-        return math_utils.subtract_frame_transforms(
-            self._asset.data.root_pos_w,
-            self._asset.data.root_quat_w,
-            self.curr_ee_goal_cart_world,
-            self.ee_goal_orn_quat,
-        )
-
-    def _compute_jacobian_b(self) -> torch.Tensor:
-        jacobian = self._asset.root_physx_view.get_jacobians()[:, self._jacobi_body_idx, :, self._jacobi_joint_ids]
-        base_rot_matrix = math_utils.matrix_from_quat(math_utils.quat_inv(self._asset.data.root_quat_w))
-        jacobian[:, :3, :] = torch.bmm(base_rot_matrix, jacobian[:, :3, :])
-        jacobian[:, 3:, :] = torch.bmm(base_rot_matrix, jacobian[:, 3:, :])
-        return jacobian
+    def _compute_jacobian_w(self) -> torch.Tensor:
+        return self._asset.root_physx_view.get_jacobians()[:, self._jacobi_body_idx, :6, self._jacobi_joint_ids]
 
     def _solve_dls(self, jacobian: torch.Tensor, dpose: torch.Tensor) -> torch.Tensor:
         jacobian_t = torch.transpose(jacobian, 1, 2)
-        damping = torch.eye(6, device=self.device) * (self.cfg.damping**2)
+        damping = torch.eye(jacobian.shape[1], device=self.device) * (self.cfg.damping**2)
         delta = jacobian_t @ torch.linalg.solve(jacobian @ jacobian_t + damping[None, ...], dpose.unsqueeze(-1))
         return delta.squeeze(-1)
+
+    def _joint_limit_bounds(self) -> tuple[torch.Tensor, torch.Tensor]:
+        lower = self._asset.data.soft_joint_pos_limits[:, self._joint_ids, 0]
+        upper = self._asset.data.soft_joint_pos_limits[:, self._joint_ids, 1]
+        if self.cfg.joint_limit_safety_margin <= 0.0:
+            return lower, upper
+
+        center = 0.5 * (lower + upper)
+        safe_lower = torch.minimum(lower + self.cfg.joint_limit_safety_margin, center)
+        safe_upper = torch.maximum(upper - self.cfg.joint_limit_safety_margin, center)
+        return safe_lower, safe_upper
+
+    def _compute_limit_avoidance_delta(self, joint_pos: torch.Tensor) -> torch.Tensor:
+        lower, upper = self._joint_limit_bounds()
+        center = 0.5 * (lower + upper)
+        half_range = 0.5 * torch.clamp(upper - lower, min=1.0e-6)
+        normalized_dist = torch.abs((joint_pos - center) / half_range)
+        active = torch.clamp(
+            (normalized_dist - self.cfg.joint_limit_avoidance_margin)
+            / max(1.0e-6, 1.0 - self.cfg.joint_limit_avoidance_margin),
+            min=0.0,
+            max=1.0,
+        )
+        return self.cfg.joint_limit_avoidance_gain * active * (center - joint_pos)
 
 
 @configclass
@@ -405,6 +429,15 @@ class LocoArmIKActionCfg(ActionTermCfg):
     preserve_order: bool = False
     action_dim: int = 6
     damping: float = 0.05
+    position_error_scale: float = 1.0
+    orientation_error_scale: float = 1.0
+    ik_step_scale: float = 1.0
+    max_delta_joint_pos: float | None = None
+    clamp_joint_targets: bool = True
+    joint_limit_safety_margin: float = 0.05
+    joint_limit_avoidance_gain: float = 0.08
+    joint_limit_avoidance_margin: float = 0.65
+    zero_joint_velocity_target: bool = True
 
     arm_base_offset: tuple[float, float, float] = (0.1, 0.0, 0.05)
     goal_center_offset: tuple[float, float, float] = (0.1, 0.0, 0.6)
@@ -412,6 +445,8 @@ class LocoArmIKActionCfg(ActionTermCfg):
     hold_time: float = 1.0
     init_pos_start: tuple[float, float, float] = (0.5, 0.3, 0.0)
     init_pos_end: tuple[float, float, float] = (0.5, 0.6, 0.0)
+    sample_initial_goal: bool = True
+    resample_goals: bool = True
     pos_l: tuple[float, float] = (0.5, 0.7)
     pos_p: tuple[float, float] = (-math.pi / 6.0, math.pi / 3.0)
     pos_y: tuple[float, float] = (-1.57, 1.57)

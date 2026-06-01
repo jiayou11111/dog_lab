@@ -60,6 +60,7 @@ def sphere_to_cart(sphere: torch.Tensor) -> torch.Tensor:
 
 
 def orientation_error(desired_quat_w: torch.Tensor, current_quat_w: torch.Tensor) -> torch.Tensor:
-    """Axis-angle orientation error matching the sign convention used by differential IK."""
+    """Loco-style quaternion-vector orientation error for ``wxyz`` quaternions."""
 
-    return math_utils.quat_box_minus(desired_quat_w, current_quat_w)
+    quat_error = math_utils.quat_mul(desired_quat_w, math_utils.quat_conjugate(current_quat_w))
+    return quat_error[:, 1:] * torch.sign(quat_error[:, 0]).unsqueeze(-1)

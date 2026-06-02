@@ -54,6 +54,26 @@ parser.add_argument(
     help="Use the task's training command sampler instead of the fixed Loco play command.",
 )
 parser.add_argument(
+    "--disable_play_arm_commands",
+    action="store_true",
+    default=False,
+    help="Keep the task's default arm EE goal sampler instead of the play-time sampler.",
+)
+parser.add_argument("--arm_command_traj_time", type=float, default=0.45, help="Play arm EE command transition time.")
+parser.add_argument("--arm_command_hold_time", type=float, default=0.05, help="Play arm EE command hold time.")
+parser.add_argument("--arm_command_l_min", type=float, default=0.5, help="Minimum arm EE spherical radius.")
+parser.add_argument("--arm_command_l_max", type=float, default=0.7, help="Maximum arm EE spherical radius.")
+parser.add_argument("--arm_command_pitch_min", type=float, default=-0.524, help="Minimum arm EE spherical pitch.")
+parser.add_argument("--arm_command_pitch_max", type=float, default=1.047, help="Maximum arm EE spherical pitch.")
+parser.add_argument("--arm_command_yaw_min", type=float, default=-1.57, help="Minimum arm EE spherical yaw.")
+parser.add_argument("--arm_command_yaw_max", type=float, default=1.57, help="Maximum arm EE spherical yaw.")
+parser.add_argument(
+    "--arm_command_min_distance",
+    type=float,
+    default=0.18,
+    help="Minimum Cartesian distance between consecutive play arm EE commands.",
+)
+parser.add_argument(
     "--priv_encoding",
     action="store_true",
     default=False,
@@ -116,6 +136,22 @@ def main():
         if command_cfg.heading_command:
             command_cfg.ranges.heading = (args_cli.command_heading, args_cli.command_heading)
         command_cfg.rel_standing_envs = 0.0
+    if not args_cli.disable_play_arm_commands and hasattr(env_cfg, "actions") and hasattr(env_cfg.actions, "arm_ik"):
+        arm_cfg = env_cfg.actions.arm_ik
+        arm_cfg.traj_time = args_cli.arm_command_traj_time
+        arm_cfg.hold_time = args_cli.arm_command_hold_time
+        arm_cfg.sample_initial_goal = True
+        arm_cfg.resample_goals = True
+        arm_cfg.pos_l = (args_cli.arm_command_l_min, args_cli.arm_command_l_max)
+        arm_cfg.pos_p = (args_cli.arm_command_pitch_min, args_cli.arm_command_pitch_max)
+        arm_cfg.pos_y = (args_cli.arm_command_yaw_min, args_cli.arm_command_yaw_max)
+        if hasattr(arm_cfg, "min_resample_goal_distance"):
+            arm_cfg.min_resample_goal_distance = args_cli.arm_command_min_distance
+        print(
+            "[INFO] Play arm EE command sampler:"
+            f" traj={arm_cfg.traj_time:.2f}s hold={arm_cfg.hold_time:.2f}s"
+            f" pos_l={arm_cfg.pos_l} pos_p={arm_cfg.pos_p} pos_y={arm_cfg.pos_y}"
+        )
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -152,6 +188,37 @@ def main():
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
+
+
+    # ===== 打印 robot actuator 配置 =====
+    base_env = env.unwrapped
+    robot = base_env.scene["robot"]
+
+    print("========== ACTUATOR DEBUG ==========")
+    print("actuator keys:", robot.actuators.keys())
+
+    for name, actuator in robot.actuators.items():
+        print("ACTUATOR:", name)
+        print("joint_names:", actuator.joint_names)
+        print("stiffness:", actuator.stiffness)
+        print("damping:", actuator.damping)
+        print("effort_limit:", actuator.effort_limit)
+        print("velocity_limit:", actuator.velocity_limit)
+        print("-----------------------------------")
+
+    # 如果你的 action term 名字叫 base，这里也一起打印 wheel ids
+    try:
+        base_action = base_env.action_manager.get_term("base")
+        print("[BASE ACTION TERM]", base_action)
+        print("wheel_joint_ids:", base_action._wheel_joint_ids)
+        print("wheel_names:", [base_action._joint_names[i] for i in base_action._wheel_local_ids])
+    except Exception as e:
+        print("[BASE ACTION TERM DEBUG FAILED]", e)
+
+    print("====================================")
+
+
+
     # wrap around environment for rsl-rl
     env = LocoRslRlVecEnvWrapper(env)
 
@@ -166,24 +233,6 @@ def main():
     # export policy to onnx/jit
     dt = env.unwrapped.physics_dt
 
-    if args_cli.debug_steps > 0:
-        try:
-            loco_base = env.unwrapped.action_manager.get_term("loco_base")
-            wheel_local_ids = list(getattr(loco_base, "_wheel_local_ids", []))
-            wheel_names = [loco_base._joint_names[i] for i in wheel_local_ids]
-            print("[DEBUG] loco_base action map:")
-            for action_id, joint_name in enumerate(loco_base._joint_names):
-                marker = " wheel" if action_id in wheel_local_ids else ""
-                print(f"[DEBUG]   action[{action_id:02d}] -> {joint_name}{marker}")
-            print(f"[DEBUG] wheel_local_ids={wheel_local_ids} wheel_names={wheel_names}")
-            print(
-                "[DEBUG]"
-                f" position_scale={getattr(loco_base.cfg, 'position_scale', None)}"
-                f" velocity_scale={getattr(loco_base.cfg, 'velocity_scale', None)}"
-            )
-        except Exception as exc:
-            print(f"[DEBUG] failed to print loco_base action map: {exc}")
-
     # reset environment
     obs_result = env.get_observations()
     obs = obs_result[0] if isinstance(obs_result, tuple) else obs_result
@@ -196,49 +245,82 @@ def main():
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs, hist_encoding=not args_cli.priv_encoding)
+            arm_debug_before = None
             if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
                 unwrapped = env.unwrapped
-                robot = unwrapped.scene["robot"]
-                command = unwrapped.command_manager.get_command("base_velocity")[0].detach().cpu().tolist()
-                root_pos = robot.data.root_pos_w[0].detach().cpu().tolist()
-                root_vel_b = robot.data.root_lin_vel_b[0].detach().cpu().tolist()
-                root_ang_vel_b = robot.data.root_ang_vel_b[0].detach().cpu().tolist()
-                action0 = actions[0].detach().cpu()
-                base_action0 = action0[:16]
-                wheel_debug = ""
                 try:
-                    loco_base = unwrapped.action_manager.get_term("loco_base")
-                    wheel_local_ids = list(getattr(loco_base, "_wheel_local_ids", []))
-                    wheel_actions = base_action0[wheel_local_ids].tolist()
-                    wheel_vel_from_action = (
-                        base_action0[wheel_local_ids] * getattr(loco_base.cfg, "velocity_scale", 1.0)
-                    ).tolist()
-                    prev_wheel_vel_targets = loco_base._joint_vel_target[0].detach().cpu().tolist()
-                    wheel_joint_ids = list(getattr(loco_base, "_wheel_joint_ids", []))
-                    wheel_joint_vel = robot.data.joint_vel[0, wheel_joint_ids].detach().cpu().tolist()
-                    wheel_debug = (
-                        f" wheel_actions={['%.3f' % x for x in wheel_actions]}"
-                        f" wheel_vel_from_action={['%.3f' % x for x in wheel_vel_from_action]}"
-                        f" prev_wheel_vel_targets={['%.3f' % x for x in prev_wheel_vel_targets]}"
-                        f" wheel_joint_vel={['%.3f' % x for x in wheel_joint_vel]}"
-                    )
+                    arm_ik = unwrapped.action_manager.get_term("arm_ik")
+                    arm_debug_before = {
+                        "registered": arm_ik.__class__.__name__ == "LocoArmIKAction",
+                        "class_name": arm_ik.__class__.__name__,
+                        "timer": arm_ik.goal_timer[0].clone(),
+                        "goal_world": arm_ik.curr_ee_goal_cart_world[0].clone(),
+                        "goal_local": arm_ik.ee_goal_local_cart[0].clone(),
+                        "goal_sphere": arm_ik.ee_goal_sphere[0].clone(),
+                        "curr_goal_sphere": arm_ik.curr_ee_goal_sphere[0].clone(),
+                    }
                 except Exception as exc:
-                    wheel_debug = f" wheel_debug_error={exc}"
-                print(
-                    "[DEBUG]"
-                    f" step={debug_step}"
-                    f" command={['%.3f' % x for x in command]}"
-                    f" root_z={root_pos[2]:.3f}"
-                    f" lin_vel_b={['%.3f' % x for x in root_vel_b]}"
-                    f" yaw_vel_b={root_ang_vel_b[2]:.3f}"
-                    f" action_mean={action0.mean().item():.3f}"
-                    f" action_absmax={action0.abs().max().item():.3f}"
-                    f" base_action={['%.3f' % x for x in base_action0.tolist()]}"
-                    f"{wheel_debug}"
-                )
+                    arm_debug_before = {"error": str(exc)}
             # env stepping
             obs, _, _, _, _, _, _ = env.step(actions)
             if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
+                unwrapped = env.unwrapped
+                robot = unwrapped.scene["robot"]
+                try:
+                    arm_ik = unwrapped.action_manager.get_term("arm_ik")
+                    arm_registered = arm_ik.__class__.__name__ == "LocoArmIKAction"
+                    ee_body_idx = getattr(arm_ik, "_body_idx")
+                    ee_pos = robot.data.body_pos_w[0, ee_body_idx]
+                    goal_world = arm_ik.curr_ee_goal_cart_world[0]
+                    goal_local = arm_ik.ee_goal_local_cart[0]
+                    goal_sphere = arm_ik.ee_goal_sphere[0]
+                    curr_goal_sphere = arm_ik.curr_ee_goal_sphere[0]
+                    timer = arm_ik.goal_timer[0]
+                    target_error = torch.linalg.norm(goal_world - ee_pos).item()
+                    goal_world_delta = 0.0
+                    goal_local_delta = 0.0
+                    goal_sphere_delta = 0.0
+                    curr_goal_sphere_delta = 0.0
+                    timer_delta = 0.0
+                    if arm_debug_before is not None and "error" not in arm_debug_before:
+                        goal_world_delta = torch.linalg.norm(goal_world - arm_debug_before["goal_world"]).item()
+                        goal_local_delta = torch.linalg.norm(goal_local - arm_debug_before["goal_local"]).item()
+                        goal_sphere_delta = torch.linalg.norm(goal_sphere - arm_debug_before["goal_sphere"]).item()
+                        curr_goal_sphere_delta = torch.linalg.norm(
+                            curr_goal_sphere - arm_debug_before["curr_goal_sphere"]
+                        ).item()
+                        timer_delta = (timer - arm_debug_before["timer"]).item()
+                    process_actions_updated = abs(timer_delta) > 0.0 or goal_world_delta > 1.0e-6
+                    print(
+                        "[ARM_IK_DEBUG]"
+                        f" step={debug_step}"
+                        f" registered={arm_registered}"
+                        f" class={arm_ik.__class__.__name__}"
+                        f" process_actions_updated={process_actions_updated}"
+                        f" timer={timer.item():.1f}"
+                        f" timer_delta={timer_delta:.1f}"
+                        f" goal_world_delta={goal_world_delta:.6f}"
+                        f" goal_local_delta={goal_local_delta:.6f}"
+                        f" ee_goal_sphere={['%.3f' % x for x in goal_sphere.detach().cpu().tolist()]}"
+                        f" curr_ee_goal_sphere={['%.3f' % x for x in curr_goal_sphere.detach().cpu().tolist()]}"
+                        f" goal_sphere_delta={goal_sphere_delta:.6f}"
+                        f" curr_goal_sphere_delta={curr_goal_sphere_delta:.6f}"
+                        f" ee_pos={['%.3f' % x for x in ee_pos.detach().cpu().tolist()]}"
+                        f" ee_goal={['%.3f' % x for x in goal_world.detach().cpu().tolist()]}"
+                        f" ee_goal_local={['%.3f' % x for x in goal_local.detach().cpu().tolist()]}"
+                        f" ee_pos_error={target_error:.4f}"
+                    )
+                except Exception as exc:
+                    before_error = None
+                    if arm_debug_before is not None:
+                        before_error = arm_debug_before.get("error")
+                    print(
+                        "[ARM_IK_DEBUG]"
+                        f" step={debug_step}"
+                        " registered=False"
+                        f" before_error={before_error}"
+                        f" after_error={exc}"
+                    )
                 debug_step += 1
         if args_cli.video:
             timestep += 1
@@ -260,3 +342,4 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+# ./isaaclab_ubuntu.sh -p scripts/reinforcement_learning/rsl_rl/play.py --task DogLab-Go2W-Piper-Flat-Play-v0 --checkpoint /home/ymy/isaac_storage/projects/dog/dog_lab/output_total/model_15000.pt --debug_steps 500 --priv_encoding

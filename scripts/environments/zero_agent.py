@@ -45,6 +45,19 @@ parser.add_argument("--ik_traj_time", type=float, default=4.0, help="Seconds to 
 parser.add_argument("--ik_hold_time", type=float, default=1000.0, help="Seconds to hold ik_goal before resampling.")
 parser.add_argument("--random_commands", action="store_true", help="Keep the task's random base velocity commands.")
 parser.add_argument("--debug_steps", type=int, default=0, help="Print IK diagnostics for N environment steps.")
+parser.add_argument(
+    "--wheel_test",
+    type=str,
+    default="none",
+    choices=["none", "same", "lr", "rl"],
+    help="Manual wheel action test pattern.",
+)
+parser.add_argument(
+    "--wheel_action",
+    type=float,
+    default=1.0,
+    help="Wheel action magnitude for manual wheel test.",
+)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -118,6 +131,14 @@ def main():
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     env.reset()
+    base_action = None
+    try:
+        base_action = env.unwrapped.action_manager.get_term("loco_base")
+        print("[WHEEL TEST] wheel_local_ids:", base_action._wheel_local_ids)
+        print("[WHEEL TEST] wheel_names:", [base_action._joint_names[i] for i in base_action._wheel_local_ids])
+        print("[WHEEL TEST] expected_order:", ["FL_foot_joint", "FR_foot_joint", "RL_foot_joint", "RR_foot_joint"])
+    except Exception as exc:
+        print("[WHEEL TEST] failed to get loco_base:", exc)
     debug_step = 0
     # simulate environment
     while simulation_app.is_running():
@@ -125,14 +146,50 @@ def main():
         with torch.inference_mode():
             # compute zero actions
             actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
+            if args_cli.wheel_test != "none" and base_action is not None:
+                a = args_cli.wheel_action
+                if args_cli.wheel_test == "same":
+                    pattern = torch.tensor([a, a, a, a], device=actions.device)
+                elif args_cli.wheel_test == "lr":
+                    pattern = torch.tensor([a, -a, a, -a], device=actions.device)
+                elif args_cli.wheel_test == "rl":
+                    pattern = torch.tensor([-a, a, -a, a], device=actions.device)
+                actions[:, base_action._wheel_local_ids] = pattern
             # apply actions
             env.step(actions)
             if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
+                if args_cli.wheel_test != "none":
+                    _print_wheel_debug(env, debug_step, base_action)
                 _print_ik_debug(env, debug_step)
                 debug_step += 1
 
     # close the simulator
     env.close()
+
+
+def _print_wheel_debug(env, step: int, base_action):
+    """Print compact wheel order, command, and resulting base velocity diagnostics."""
+
+    if base_action is None:
+        return
+    robot = env.unwrapped.scene["robot"]
+    wheel_joint_ids = list(getattr(base_action, "_wheel_joint_ids", []))
+    wheel_names = [base_action._joint_names[i] for i in getattr(base_action, "_wheel_local_ids", [])]
+    wheel_target = base_action._joint_vel_target[0].detach().cpu()
+    wheel_vel = robot.data.joint_vel[0, wheel_joint_ids].detach().cpu()
+    root_lin_vel_b = robot.data.root_lin_vel_b[0].detach().cpu()
+    root_ang_vel_b = robot.data.root_ang_vel_b[0].detach().cpu()
+    print(
+        "[WHEEL TEST]"
+        f" step={step}"
+        f" pattern={args_cli.wheel_test}"
+        f" wheel_action={args_cli.wheel_action:.3f}"
+        f" wheel_names={wheel_names}"
+        f" wheel_target={['%.3f' % x for x in wheel_target.tolist()]}"
+        f" wheel_vel={['%.3f' % x for x in wheel_vel.tolist()]}"
+        f" root_lin_vel_b={['%.3f' % x for x in root_lin_vel_b.tolist()]}"
+        f" root_yaw_vel_b={root_ang_vel_b[2].item():.3f}"
+    )
 
 
 def _print_ik_debug(env, step: int):
@@ -179,6 +236,7 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+
 
 
 # ./isaaclab_ubuntu.sh -p scripts/environments/zero_agent.py --task DogLab-Go2W-Piper-Flat-Play-v0 --num_envs 1 --arm_mode ik_fixed --ik_start 0.5 0.3 0.0 --ik_goal 0.6 0.5 0.5 --ik_traj_time 1.0 --debug_steps 600

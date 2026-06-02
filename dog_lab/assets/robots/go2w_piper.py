@@ -34,7 +34,7 @@ GO2W_PIPER_CFG = ArticulationCfg(
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=True,
             solver_position_iteration_count=4,
-            solver_velocity_iteration_count=0,
+            solver_velocity_iteration_count=4,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -73,10 +73,10 @@ GO2W_PIPER_CFG = ArticulationCfg(
         ),
         "wheels": ImplicitActuatorCfg(
             joint_names_expr=[".*_foot_joint"],
-            effort_limit=23.7,
-            velocity_limit=30.1,
+            effort_limit=30,
+            velocity_limit=40,
             stiffness=0.0,
-            damping=0.5,
+            damping=1.0,
             friction=0.0,
         ),
         "arm": ImplicitActuatorCfg(

@@ -129,7 +129,9 @@ class LocoBaseAction(ActionTerm):
         if motor_strength is None:
             motor_strength = 1.0
         pos_actions = actions[:, self._non_wheel_local_ids] * self.cfg.position_scale
-        vel_actions = actions[:, self._wheel_local_ids] * self.cfg.velocity_scale
+        wheel_sign = torch.tensor([1.0, -1.0, 1.0, -1.0], device=self.device)
+        vel_actions = actions[:, self._wheel_local_ids] * self.cfg.velocity_scale * wheel_sign
+        # vel_actions = actions[:, self._wheel_local_ids] * self.cfg.velocity_scale
         if isinstance(motor_strength, torch.Tensor):
             pos_actions = pos_actions * motor_strength[:, self._non_wheel_local_ids]
             vel_actions = vel_actions * motor_strength[:, self._wheel_local_ids]
@@ -312,21 +314,56 @@ class LocoArmIKAction(ActionTerm):
             active_env_ids = env_ids[active_mask]
             if active_env_ids.numel() == 0:
                 break
+            start_goal_cart = sphere_to_cart(self.ee_start_sphere[active_env_ids])
             self._resample_ee_goal_sphere_once(active_env_ids)
             collision_mask = self._collision_check(active_env_ids)
+            if self.cfg.min_resample_goal_distance > 0.0:
+                next_goal_cart = sphere_to_cart(self.ee_goal_sphere[active_env_ids])
+                too_close_mask = (
+                    torch.linalg.norm(next_goal_cart - start_goal_cart, dim=-1)
+                    < self.cfg.min_resample_goal_distance
+                )
+                collision_mask = torch.logical_or(collision_mask, too_close_mask)
             active_mask_ids = active_mask.nonzero(as_tuple=False).flatten()
             active_mask[active_mask_ids] = collision_mask
         self.goal_timer[env_ids] = 0.0
 
+
     def _resample_ee_goal_orn_once(self, env_ids: torch.Tensor) -> None:
-        self._goal_orn_delta_rpy[env_ids, 0].uniform_(self.cfg.delta_orn_r[0], self.cfg.delta_orn_r[1])
-        self._goal_orn_delta_rpy[env_ids, 1].uniform_(self.cfg.delta_orn_p[0], self.cfg.delta_orn_p[1])
-        self._goal_orn_delta_rpy[env_ids, 2].uniform_(self.cfg.delta_orn_y[0], self.cfg.delta_orn_y[1])
+        n = env_ids.numel()
+        if n == 0:
+            return
+
+        low = torch.tensor(
+            [self.cfg.delta_orn_r[0], self.cfg.delta_orn_p[0], self.cfg.delta_orn_y[0]],
+            device=self.device,
+        )
+        high = torch.tensor(
+            [self.cfg.delta_orn_r[1], self.cfg.delta_orn_p[1], self.cfg.delta_orn_y[1]],
+            device=self.device,
+        )
+
+        rand = low + torch.rand(n, 3, device=self.device) * (high - low)
+        self._goal_orn_delta_rpy[env_ids] = rand
+
 
     def _resample_ee_goal_sphere_once(self, env_ids: torch.Tensor) -> None:
-        self.ee_goal_sphere[env_ids, 0].uniform_(self.cfg.pos_l[0], self.cfg.pos_l[1])
-        self.ee_goal_sphere[env_ids, 1].uniform_(self.cfg.pos_p[0], self.cfg.pos_p[1])
-        self.ee_goal_sphere[env_ids, 2].uniform_(self.cfg.pos_y[0], self.cfg.pos_y[1])
+        n = env_ids.numel()
+        if n == 0:
+            return
+
+        low = torch.tensor(
+            [self.cfg.pos_l[0], self.cfg.pos_p[0], self.cfg.pos_y[0]],
+            device=self.device,
+        )
+        high = torch.tensor(
+            [self.cfg.pos_l[1], self.cfg.pos_p[1], self.cfg.pos_y[1]],
+            device=self.device,
+        )
+
+        rand = low + torch.rand(n, 3, device=self.device) * (high - low)
+        self.ee_goal_sphere[env_ids] = rand
+
 
     def _collision_check(self, env_ids: torch.Tensor) -> torch.Tensor:
         ee_target_sphere = torch.lerp(
@@ -450,6 +487,7 @@ class LocoArmIKActionCfg(ActionTermCfg):
     pos_l: tuple[float, float] = (0.5, 0.7)
     pos_p: tuple[float, float] = (-math.pi / 6.0, math.pi / 3.0)
     pos_y: tuple[float, float] = (-1.57, 1.57)
+    min_resample_goal_distance: float = 0.0
     default_ee_rpy: tuple[float, float, float] = (0.0, math.pi / 2.0, -math.pi / 2.0)
     delta_orn_r: tuple[float, float] = (-0.2, 0.2)
     delta_orn_p: tuple[float, float] = (-0.2, 0.2)

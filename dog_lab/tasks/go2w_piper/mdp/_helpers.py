@@ -13,25 +13,25 @@ from isaaclab.assets import Articulation
 from isaaclab.utils import math as math_utils
 
 BASE_JOINTS = [
-    "FL_hip_joint",
-    "FL_thigh_joint",
-    "FL_calf_joint",
-    "FL_foot_joint",
     "FR_hip_joint",
     "FR_thigh_joint",
     "FR_calf_joint",
     "FR_foot_joint",
-    "RL_hip_joint",
-    "RL_thigh_joint",
-    "RL_calf_joint",
-    "RL_foot_joint",
+    "FL_hip_joint",
+    "FL_thigh_joint",
+    "FL_calf_joint",
+    "FL_foot_joint",
     "RR_hip_joint",
     "RR_thigh_joint",
     "RR_calf_joint",
     "RR_foot_joint",
+    "RL_hip_joint",
+    "RL_thigh_joint",
+    "RL_calf_joint",
+    "RL_foot_joint",
 ]
 ARM_JOINTS = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
-WHEEL_JOINTS = ["FL_foot_joint", "FR_foot_joint", "RL_foot_joint", "RR_foot_joint"]
+WHEEL_JOINTS = ["FR_foot_joint", "FL_foot_joint", "RR_foot_joint", "RL_foot_joint"]
 
 
 def base_roll_pitch(asset: Articulation) -> torch.Tensor:

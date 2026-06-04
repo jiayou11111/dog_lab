@@ -1,7 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot name="go2w_piper_description">
-
-  <link name="base">
+<link name="base">
     <inertial>
       <origin xyz="0.021112 0 -0.005366" rpy="0 0 0" />
       <mass value="6.921" />
@@ -10,7 +9,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/base.dae" />
+        <mesh filename="package://go2w_description/meshes/base.dae" />
       </geometry>
       <material name="深色橡胶_001-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="白色logo_001-effect"><color rgba="1 1 1 1" /></material><material name="黑色贴纸_007-effect"><color rgba="0.009018 0.009018 0.009018 1" /></material><material name="黑色金属_007-effect"><color rgba="0.01341 0.01341 0.01341 1" /></material><material name="黑色塑料_003-effect"><color rgba="0.023455 0.023455 0.023455 1" /></material></visual>
     <collision>
@@ -20,7 +19,45 @@
       </geometry>
     </collision>
   </link>
-
+  <link name="Head_upper">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
+    </inertial>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <!-- <cylinder radius="0.06" length="0.09" /> -->
+        <sphere radius="0.06" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Head_upper_joint" type="fixed" dont_collapse="true">
+    <origin xyz="0.285 0 0.01" rpy="0 0 0" />
+    <parent link="base" />
+    <child link="Head_upper" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="Head_lower">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
+    </inertial>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.06" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Head_lower_joint" type="fixed" dont_collapse="true">
+    <origin xyz="0.008 0 -0.07" rpy="0 0 0" />
+    <parent link="Head_upper" />
+    <child link="Head_lower" />
+    <axis xyz="0 0 0" />
+  </joint>
   <link name="FL_hip">
     <inertial>
       <origin xyz="-0.0054 0.00194 -0.000105" rpy="0 0 0" />
@@ -30,13 +67,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/hip.dae" />
+        <mesh filename="package://go2w_description/meshes/hip.dae" />
       </geometry>
       <material name="深色橡胶_001-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0.08 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.046" />
+        <!-- <cylinder length="0.04" radius="0.046" /> -->
+        <sphere radius="0.046" />
       </geometry>
     </collision>
   </link>
@@ -56,7 +94,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/thigh.dae" />
+        <mesh filename="package://go2w_description/meshes/thigh.dae" />
       </geometry>
       <material name="深色橡胶_003-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material_009-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
@@ -82,7 +120,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/calf.stl" />
+        <mesh filename="package://go2w_description/meshes/calf.stl" />
       </geometry>
       <material name="">
         <color rgba="1 1 1 1" />
@@ -91,7 +129,8 @@
     <collision>
       <origin rpy="0 -0.21 0" xyz="0.008 0 -0.06" />
       <geometry>
-        <cylinder length="0.12" radius="0.012" />
+        <!-- <cylinder length="0.12" radius="0.013" /> -->
+        <box size="0.026 0.026 0.12" />
       </geometry>
     </collision>
   </link>
@@ -106,7 +145,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.065" radius="0.011" />
+        <!-- <cylinder length="0.065" radius="0.011" /> -->
+        <box size="0.022 0.022 0.065" />
       </geometry>
     </collision>
   </link>
@@ -120,7 +160,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.03" radius="0.0155" />
+        <!-- <cylinder length="0.03" radius="0.0155" /> -->
+        <box size="0.031 0.031 0.03" />
       </geometry>
     </collision>
   </link>
@@ -130,25 +171,28 @@
     <child link="FL_calflower1" />
     <axis xyz="0 0 0" />
   </joint>
+
   <link name="FL_foot_motor">
     <inertial>
       <origin xyz="0 0.0 0" rpy="0 0 0" />
       <mass value="0.646" />
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.001" />
     </inertial>
-    <collision>
+    <!-- <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0 0" />
       <geometry>
         <cylinder length="0.05" radius="0.05" />
       </geometry>
-    </collision>
+    </collision> -->
   </link>
+
   <joint name="FL_foot_motor_joint" type="fixed">
     <origin xyz="-0.00 0.01 -0.2264" rpy="0 0.0 0" />
     <parent link="FL_calf" />
     <child link="FL_foot_motor" />
     <axis xyz="0 0 0" />
   </joint>
+
   <link name="FL_foot">
     <inertial>
       <origin xyz="0 0.06 0" rpy="0 0 0" />
@@ -158,27 +202,32 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/left_wheel.dae" />
+        <mesh filename="package://go2w_description/meshes/left_wheel.dae" />
       </geometry>
-      <material name="">
-        <color rgba="1 1 1 1" />
-      </material>
+      <material name="黑色塑料_003-effect"><color rgba="0.023455 0.023455 0.023455 1" /></material>
     </visual>
+    <!-- <collision>
+      <origin rpy="0 0 0" xyz="0 0.0 0" />
+      <geometry>
+        <mesh filename="package://go2w_description/meshes/left_wheel.dae" />
+      </geometry>
+    </collision> -->
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0.048 0" />
       <geometry>
-        <cylinder length="0.048" radius="0.086" />
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
-  <joint name="FL_foot_joint" type="revolute">
+  <joint name="FL_foot_joint" type="continuous">
     <origin xyz="0 0 -0.2264" rpy="0 0 0" />
     <parent link="FL_calf" />
     <child link="FL_foot" />
     <axis xyz="0 1 0" />
-    <limit effort="23.7" velocity="30.1" />
+
+      <limit effort="23.7" velocity="30.1" />
   </joint>
-  
+
   <link name="FR_hip">
     <inertial>
       <origin xyz="-0.0054 -0.00194 -0.000105" rpy="0 0 0" />
@@ -188,13 +237,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="3.1415 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/hip.dae" />
+        <mesh filename="package://go2w_description/meshes/hip.dae" />
       </geometry>
       <material name="深色橡胶_001-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 -0.08 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.046" />
+        <!-- <cylinder length="0.04" radius="0.046" /> -->
+        <sphere radius="0.046" />
       </geometry>
     </collision>
   </link>
@@ -214,7 +264,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/thigh_mirror.dae" />
+        <mesh filename="package://go2w_description/meshes/thigh_mirror.dae" />
       </geometry>
       <material name="深色橡胶_012-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material_011-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
@@ -240,7 +290,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/calf_mirror.stl" />
+        <mesh filename="package://go2w_description/meshes/calf_mirror.stl" />
       </geometry>
       <material name="">
         <color rgba="1 1 1 1" />
@@ -249,7 +299,8 @@
     <collision>
       <origin rpy="0 -0.2 0" xyz="0.01 0 -0.06" />
       <geometry>
-        <cylinder length="0.12" radius="0.013" />
+        <!-- <cylinder length="0.12" radius="0.013" /> -->
+        <box size="0.026 0.026 0.12" />
       </geometry>
     </collision>
   </link>
@@ -264,7 +315,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.065" radius="0.011" />
+        <!-- <cylinder length="0.065" radius="0.011" /> -->
+        <box size="0.022 0.022 0.065" />
       </geometry>
     </collision>
   </link>
@@ -278,7 +330,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.03" radius="0.0155" />
+        <!-- <cylinder length="0.03" radius="0.0155" /> -->
+        <box size="0.031 0.031 0.03" />
       </geometry>
     </collision>
   </link>
@@ -288,25 +341,28 @@
     <child link="FR_calflower1" />
     <axis xyz="0 0 0" />
   </joint>
+
   <link name="FR_foot_motor">
     <inertial>
       <origin xyz="0 0.0 0" rpy="0 0 0" />
       <mass value="0.646" />
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.001" />
     </inertial>
-    <collision>
+    <!-- <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0 0" />
       <geometry>
         <cylinder length="0.05" radius="0.05" />
       </geometry>
-    </collision>
+    </collision> -->
   </link>
+
   <joint name="FR_foot_motor_joint" type="fixed">
     <origin xyz="0.0 -0.01 -0.2264" rpy="0 0.0 0" />
     <parent link="FR_calf" />
     <child link="FR_foot_motor" />
     <axis xyz="0 0 0" />
   </joint>
+
   <link name="FR_foot">
     <inertial>
       <origin xyz="0 -0.06 0" rpy="0 0 0" />
@@ -316,25 +372,29 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/right_wheel.dae" />
+        <mesh filename="package://go2w_description/meshes/right_wheel.dae" />
       </geometry>
-      <material name="">
-        <color rgba="1 1 1 1" />
-      </material>
+      <material name="黑色塑料_003-effect"><color rgba="0.023455 0.023455 0.023455 1" /></material>
     </visual>
+    <!-- <collision>
+      <origin rpy="0 0 0" xyz="0 -0.0 0" />
+      <geometry>
+        <mesh filename="package://go2w_description/meshes/right_wheel.dae" />
+      </geometry>
+    </collision> -->
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 -0.048 0" />
       <geometry>
-        <cylinder length="0.048" radius="0.086" />
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
-  <joint name="FR_foot_joint" type="revolute">
+  <joint name="FR_foot_joint" type="continuous">
     <origin xyz="0 0 -0.2264" rpy="0 0 0" />
     <parent link="FR_calf" />
     <child link="FR_foot" />
     <axis xyz="0 1 0" />
-    <limit effort="23.7" velocity="30.1" />
+      <limit effort="23.7" velocity="30.1" />
   </joint>
 
   <link name="RL_hip">
@@ -346,13 +406,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 3.1415 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/hip.dae" />
+        <mesh filename="package://go2w_description/meshes/hip.dae" />
       </geometry>
       <material name="深色橡胶_001-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0.08 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.046" />
+        <!-- <cylinder length="0.04" radius="0.046" /> -->
+        <sphere radius="0.046" />
       </geometry>
     </collision>
   </link>
@@ -372,7 +433,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/thigh.dae" />
+        <mesh filename="package://go2w_description/meshes/thigh.dae" />
       </geometry>
       <material name="深色橡胶_003-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material_009-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
@@ -398,7 +459,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/calf.stl" />
+        <mesh filename="package://go2w_description/meshes/calf.stl" />
       </geometry>
       <material name="">
         <color rgba="1 1 1 1" />
@@ -407,7 +468,8 @@
     <collision>
       <origin rpy="0 -0.2 0" xyz="0.01 0 -0.06" />
       <geometry>
-        <cylinder length="0.12" radius="0.013" />
+        <!-- <cylinder length="0.12" radius="0.013" /> -->
+        <box size="0.026 0.026 0.12" />
       </geometry>
     </collision>
   </link>
@@ -422,7 +484,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.065" radius="0.011" />
+        <!-- <cylinder length="0.065" radius="0.011" /> -->
+        <box size="0.022 0.022 0.065" />
       </geometry>
     </collision>
   </link>
@@ -436,7 +499,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.03" radius="0.0155" />
+        <!-- <cylinder length="0.03" radius="0.0155" /> -->
+        <box size="0.031 0.031 0.03" />
       </geometry>
     </collision>
   </link>
@@ -446,25 +510,29 @@
     <child link="RL_calflower1" />
     <axis xyz="0 0 0" />
   </joint>
+
   <link name="RL_foot_motor">
-    <inertial>
-        <origin xyz="0 0.0 0" rpy="0 0 0" />
-        <mass value="0.646" />
-        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.001" />
-    </inertial>
-    <collision>
-        <origin rpy="1.5707963267948966 0 0" xyz="0 0 0" />
-        <geometry>
-        <cylinder length="0.05" radius="0.05" />
-        </geometry>
-    </collision>
-  </link>
-  <joint name="RL_foot_motor_joint" type="fixed">
-    <origin xyz="0.00 0.01 -0.2264" rpy="0 0.0 0" />
-    <parent link="RL_calf" />
-    <child link="RL_foot_motor" />
-    <axis xyz="0 0 0" />
-  </joint>
+  <inertial>
+    <origin xyz="0 0.0 0" rpy="0 0 0" />
+    <mass value="0.646" />
+    <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.001" />
+  </inertial>
+  <!-- <collision>
+    <origin rpy="1.5707963267948966 0 0" xyz="0 0 0" />
+    <geometry>
+      <cylinder length="0.05" radius="0.05" />
+    </geometry>
+  </collision> -->
+</link>
+
+<joint name="RL_foot_motor_joint" type="fixed">
+  <origin xyz="0.00 0.01 -0.2264" rpy="0 0.0 0" />
+  <parent link="RL_calf" />
+  <child link="RL_foot_motor" />
+  <axis xyz="0 0 0" />
+</joint>
+
+
   <link name="RL_foot">
     <inertial>
       <origin xyz="0 0.06 0" rpy="0 0 0" />
@@ -474,25 +542,29 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/left_wheel.dae" />
+        <mesh filename="package://go2w_description/meshes/left_wheel.dae" />
       </geometry>
-      <material name="">
-        <color rgba="1 1 1 1" />
-      </material>
+      <material name="黑色塑料_003-effect"><color rgba="0.023455 0.023455 0.023455 1" /></material>
     </visual>
+    <!-- <collision>
+      <origin rpy="0 0 0" xyz="0 0.0 0" />
+      <geometry>
+        <mesh filename="package://go2w_description/meshes/left_wheel.dae" />
+      </geometry>
+    </collision> -->
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0.048 0" />
       <geometry>
-        <cylinder length="0.048" radius="0.086" />
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
-  <joint name="RL_foot_joint" type="revolute">
+  <joint name="RL_foot_joint" type="continuous">
     <origin xyz="0.0 0 -0.2264" rpy="0 0 0" />
     <parent link="RL_calf" />
     <child link="RL_foot" />
     <axis xyz="0 1 0" />
-    <limit effort="23.7" velocity="30.1" />
+      <limit effort="23.7" velocity="30.1" />
   </joint>
 
   <link name="RR_hip">
@@ -504,13 +576,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="3.1415 3.1415 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/hip.dae" />
+        <mesh filename="package://go2w_description/meshes/hip.dae" />
       </geometry>
       <material name="深色橡胶_001-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 -0.08 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.046" />
+        <!-- <cylinder length="0.04" radius="0.046" /> -->
+        <sphere radius="0.046" />
       </geometry>
     </collision>
   </link>
@@ -530,7 +603,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/thigh_mirror.dae" />
+        <mesh filename="package://go2w_description/meshes/thigh_mirror.dae" />
       </geometry>
       <material name="深色橡胶_012-effect"><color rgba="0.6717055 0.6924257 0.7742702 1" /></material><material name="Material_011-effect"><color rgba="0.9 0.95 0.95 1" /></material></visual>
     <collision>
@@ -556,7 +629,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/calf_mirror.stl" />
+        <mesh filename="package://go2w_description/meshes/calf_mirror.stl" />
       </geometry>
       <material name="">
         <color rgba="1 1 1 1" />
@@ -565,7 +638,8 @@
     <collision>
       <origin rpy="0 -0.2 0" xyz="0.01 0 -0.06" />
       <geometry>
-        <cylinder length="0.12" radius="0.013" />
+        <!-- <cylinder length="0.12" radius="0.013" /> -->
+        <box size="0.026 0.026 0.12" />
       </geometry>
     </collision>
   </link>
@@ -580,7 +654,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.065" radius="0.011" />
+        <!-- <cylinder length="0.065" radius="0.011" /> -->
+        <box size="0.022 0.022 0.065" />
       </geometry>
     </collision>
   </link>
@@ -594,7 +669,8 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.03" radius="0.0155" />
+        <!-- <cylinder length="0.03" radius="0.0155" /> -->
+        <box size="0.031 0.031 0.03" />
       </geometry>
     </collision>
   </link>
@@ -604,25 +680,28 @@
     <child link="RR_calflower1" />
     <axis xyz="0 0 0" />
   </joint>
+
   <link name="RR_foot_motor">
-    <inertial>
-        <origin xyz="0 0.0 0" rpy="0 0 0" />
-        <mass value="0.646" />
-        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.001" />
-    </inertial>
-    <collision>
-        <origin rpy="1.5707963267948966 0 0" xyz="0 0 0" />
-        <geometry>
-        <cylinder length="0.05" radius="0.05" />
-        </geometry>
-    </collision>
-  </link>
-  <joint name="RR_foot_motor_joint" type="fixed">
-    <origin xyz="0.00 -0.01 -0.2264" rpy="0 0.0 0" />
-    <parent link="RR_calf" />
-    <child link="RR_foot_motor" />
-    <axis xyz="0 0 0" />
-  </joint>
+  <inertial>
+    <origin xyz="0 0.0 0" rpy="0 0 0" />
+    <mass value="0.646" />
+    <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.001" />
+  </inertial>
+  <!-- <collision>
+    <origin rpy="1.5707963267948966 0 0" xyz="0 0 0" />
+    <geometry>
+      <cylinder length="0.05" radius="0.05" />
+    </geometry>
+  </collision> -->
+</link>
+
+<joint name="RR_foot_motor_joint" type="fixed">
+  <origin xyz="0.00 -0.01 -0.2264" rpy="0 0.0 0" />
+  <parent link="RR_calf" />
+  <child link="RR_foot_motor" />
+  <axis xyz="0 0 0" />
+</joint>
+
   <link name="RR_foot">
     <inertial>
       <origin xyz="0 -0.06 0" rpy="0 0 0" />
@@ -632,28 +711,58 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/right_wheel.dae" />
+        <mesh filename="package://go2w_description/meshes/right_wheel.dae" />
       </geometry>
-      <material name="">
-        <color rgba="1 1 1 1" />
-      </material>
+      <material name="黑色塑料_003-effect"><color rgba="0.023455 0.023455 0.023455 1" /></material>
     </visual>
+    <!-- <collision>
+      <origin rpy="0 0 0" xyz="0 -0.0 0" />
+      <geometry>
+        <mesh filename="package://go2w_description/meshes/right_wheel.dae" />
+      </geometry>
+    </collision> -->
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 -0.048 0" />
       <geometry>
-        <cylinder length="0.048" radius="0.086" />
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
-  <joint name="RR_foot_joint" type="revolute">
+  <joint name="RR_foot_joint" type="continuous">
     <origin xyz="-0.0 0 -0.2264" rpy="0 0 0" />
     <parent link="RR_calf" />
     <child link="RR_foot" />
     <axis xyz="0 1 0" />
-    <limit effort="23.7" velocity="30.1" />
+      <limit effort="23.7" velocity="30.1" />
+  </joint>
+  <link name="imu">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="imu_joint" type="fixed">
+    <origin xyz="-0.02557 0 0.04232" rpy="0 0 0" />
+    <parent link="base" />
+    <child link="imu" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="radar">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="radar_joint" type="fixed">
+    <origin xyz="0.28945 0 -0.046825" rpy="0 2.8782 0" />
+    <parent link="base" />
+    <child link="radar" />
+    <axis xyz="0 0 0" />
   </joint>
 
-  <link
+<link
     name="arm_base">
     <inertial>
       <origin 

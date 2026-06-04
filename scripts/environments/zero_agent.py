@@ -134,9 +134,8 @@ def main():
     base_action = None
     try:
         base_action = env.unwrapped.action_manager.get_term("loco_base")
-        print("[WHEEL TEST] wheel_local_ids:", base_action._wheel_local_ids)
-        print("[WHEEL TEST] wheel_names:", [base_action._joint_names[i] for i in base_action._wheel_local_ids])
-        print("[WHEEL TEST] expected_order:", ["FL_foot_joint", "FR_foot_joint", "RL_foot_joint", "RR_foot_joint"])
+        print("[WHEEL TEST] wheel_joint_map:", base_action._wheel_joint_map)
+        print("[WHEEL TEST] expected_order:", ["FR_foot_joint", "FL_foot_joint", "RR_foot_joint", "RL_foot_joint"])
     except Exception as exc:
         print("[WHEEL TEST] failed to get loco_base:", exc)
     debug_step = 0
@@ -160,9 +159,9 @@ def main():
             if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
                 if args_cli.wheel_test != "none":
                     _print_wheel_debug(env, debug_step, base_action)
-                _print_ik_debug(env, debug_step)
-                debug_step += 1
 
+                # _print_ik_debug(env, debug_step)
+                debug_step += 1
     # close the simulator
     env.close()
 
@@ -179,6 +178,7 @@ def _print_wheel_debug(env, step: int, base_action):
     wheel_vel = robot.data.joint_vel[0, wheel_joint_ids].detach().cpu()
     root_lin_vel_b = robot.data.root_lin_vel_b[0].detach().cpu()
     root_ang_vel_b = robot.data.root_ang_vel_b[0].detach().cpu()
+    wheel_torque = robot.data.applied_torque[0, wheel_joint_ids].detach().cpu()
     print(
         "[WHEEL TEST]"
         f" step={step}"
@@ -189,9 +189,8 @@ def _print_wheel_debug(env, step: int, base_action):
         f" wheel_vel={['%.3f' % x for x in wheel_vel.tolist()]}"
         f" root_lin_vel_b={['%.3f' % x for x in root_lin_vel_b.tolist()]}"
         f" root_yaw_vel_b={root_ang_vel_b[2].item():.3f}"
+        f" wheel_torque={['%.3f' % x for x in wheel_torque.tolist()]}"
     )
-
-
 def _print_ik_debug(env, step: int):
     """Print compact IK tracking diagnostics for the first environment."""
 

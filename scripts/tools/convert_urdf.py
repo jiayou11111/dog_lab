@@ -165,4 +165,4 @@ if __name__ == "__main__":
     # close sim app
     simulation_app.close()
 
-    # ./run_dog_lab.sh -p scripts/tools/convert_urdf.py   /home/ymy/isaac_storage/projects/dog/dog_lab/data/Robots/Unitree/Go2W-Piper/go2w_piper_description/urdf/go2w_piper_description.urdf   /home/ymy/isaac_storage/projects/dog/dog_lab/data/Robots/Unitree/Go2W-Piper/go2w_piper_description/USD   --merge-joints
+    # ./run_dog_lab.sh -p scripts/tools/convert_urdf.py --headless   /home/ymy/isaac_storage/projects/dog/dog_lab/data/Robots/Unitree/Go2W-Piper/go2w_piper_description/urdf/go2w_piper_description.urdf   /home/ymy/isaac_storage/projects/dog/dog_lab/data/Robots/Unitree/Go2W-Piper/go2w_piper_description/USD

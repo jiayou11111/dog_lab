@@ -43,10 +43,16 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--command_x", type=float, default=1.0, help="Fixed forward velocity command for play.")
+parser.add_argument("--command_x", type=float, default=1, help="Fixed forward velocity command for play.")
 parser.add_argument("--command_y", type=float, default=0.0, help="Fixed lateral velocity command for play.")
 parser.add_argument("--command_yaw", type=float, default=0.0, help="Fixed yaw velocity command for play.")
 parser.add_argument("--command_heading", type=float, default=0.0, help="Fixed heading command for play.")
+parser.add_argument(
+    "--use_heading_command",
+    action="store_true",
+    default=False,
+    help="Use heading control for play yaw commands. By default play uses the fixed --command_yaw value.",
+)
 parser.add_argument(
     "--random_commands",
     action="store_true",
@@ -59,8 +65,8 @@ parser.add_argument(
     default=False,
     help="Keep the task's default arm EE goal sampler instead of the play-time sampler.",
 )
-parser.add_argument("--arm_command_traj_time", type=float, default=0.45, help="Play arm EE command transition time.")
-parser.add_argument("--arm_command_hold_time", type=float, default=0.05, help="Play arm EE command hold time.")
+parser.add_argument("--arm_command_traj_time", type=float, default=2, help="Play arm EE command transition time.")
+parser.add_argument("--arm_command_hold_time", type=float, default=1, help="Play arm EE command hold time.")
 parser.add_argument("--arm_command_l_min", type=float, default=0.5, help="Minimum arm EE spherical radius.")
 parser.add_argument("--arm_command_l_max", type=float, default=0.7, help="Maximum arm EE spherical radius.")
 parser.add_argument("--arm_command_pitch_min", type=float, default=-0.524, help="Minimum arm EE spherical pitch.")
@@ -79,7 +85,8 @@ parser.add_argument(
     default=False,
     help="Use privileged latent inference instead of the Loco play history encoder.",
 )
-parser.add_argument("--debug_steps", type=int, default=0, help="Print command/action/state diagnostics for N steps.")
+parser.add_argument("--debug_steps", type=int, default=0, help="Print base/arm diagnostics for N play steps.")
+parser.add_argument("--debug_arm", action="store_true", default=False, help="Also print arm IK diagnostics.")
 parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
@@ -133,6 +140,7 @@ def main():
         command_cfg.ranges.lin_vel_x = (args_cli.command_x, args_cli.command_x)
         command_cfg.ranges.lin_vel_y = (args_cli.command_y, args_cli.command_y)
         command_cfg.ranges.ang_vel_z = (args_cli.command_yaw, args_cli.command_yaw)
+        command_cfg.heading_command = args_cli.use_heading_command
         if command_cfg.heading_command:
             command_cfg.ranges.heading = (args_cli.command_heading, args_cli.command_heading)
         command_cfg.rel_standing_envs = 0.0
@@ -188,37 +196,6 @@ def main():
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
-
-
-    # ===== 打印 robot actuator 配置 =====
-    base_env = env.unwrapped
-    robot = base_env.scene["robot"]
-
-    print("========== ACTUATOR DEBUG ==========")
-    print("actuator keys:", robot.actuators.keys())
-
-    for name, actuator in robot.actuators.items():
-        print("ACTUATOR:", name)
-        print("joint_names:", actuator.joint_names)
-        print("stiffness:", actuator.stiffness)
-        print("damping:", actuator.damping)
-        print("effort_limit:", actuator.effort_limit)
-        print("velocity_limit:", actuator.velocity_limit)
-        print("-----------------------------------")
-
-    # 如果你的 action term 名字叫 base，这里也一起打印 wheel ids
-    try:
-        base_action = base_env.action_manager.get_term("base")
-        print("[BASE ACTION TERM]", base_action)
-        print("wheel_joint_ids:", base_action._wheel_joint_ids)
-        print("wheel_names:", [base_action._joint_names[i] for i in base_action._wheel_local_ids])
-    except Exception as e:
-        print("[BASE ACTION TERM DEBUG FAILED]", e)
-
-    print("====================================")
-
-
-
     # wrap around environment for rsl-rl
     env = LocoRslRlVecEnvWrapper(env)
 
@@ -238,6 +215,21 @@ def main():
     obs = obs_result[0] if isinstance(obs_result, tuple) else obs_result
     timestep = 0
     debug_step = 0
+    if args_cli.debug_steps > 0:
+        try:
+            base_action = env.unwrapped.action_manager.get_term("loco_base")
+            print(
+                "[BASE_DEBUG_INIT]"
+                f" action_term={base_action.__class__.__name__}"
+                f" base_joint_names={base_action._joint_names}"
+                f" wheel_joint_map={base_action._wheel_joint_map}"
+                f" leg_joint_map={base_action._non_wheel_joint_map}"
+                f" position_scale={base_action.cfg.position_scale}"
+                f" velocity_scale={base_action.cfg.velocity_scale}"
+            )
+        except Exception as exc:
+            print(f"[BASE_DEBUG_INIT] failed_to_get_loco_base={exc}")
+
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -246,7 +238,7 @@ def main():
             # agent stepping
             actions = policy(obs, hist_encoding=not args_cli.priv_encoding)
             arm_debug_before = None
-            if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
+            if args_cli.debug_arm and args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
                 unwrapped = env.unwrapped
                 try:
                     arm_ik = unwrapped.action_manager.get_term("arm_ik")
@@ -262,8 +254,54 @@ def main():
                 except Exception as exc:
                     arm_debug_before = {"error": str(exc)}
             # env stepping
-            obs, _, _, _, _, _, _ = env.step(actions)
+            obs, _, leg_rewards, arm_rewards, costs, dones, extras = env.step(actions)
             if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
+                unwrapped = env.unwrapped
+                robot = unwrapped.scene["robot"]
+                try:
+                    base_action = unwrapped.action_manager.get_term("loco_base")
+                    command = unwrapped.command_manager.get_command("base_velocity")[0, :3]
+                    root_lin_vel_b = robot.data.root_lin_vel_b[0]
+                    root_ang_vel_b = robot.data.root_ang_vel_b[0]
+                    root_z = robot.data.root_pos_w[0, 2]
+                    wheel_actions = actions[0, base_action._wheel_local_ids]
+                    wheel_vel_target = base_action._joint_vel_target[0]
+                    wheel_vel = robot.data.joint_vel[0, base_action._wheel_joint_ids]
+                    wheel_pos = robot.data.joint_pos[0, base_action._wheel_joint_ids]
+                    wheel_names = [base_action._joint_names[i] for i in base_action._wheel_local_ids]
+                    wheel_torque = robot.data.applied_torque[0, base_action._wheel_joint_ids]
+                    episode_len = unwrapped.episode_length_buf[0].item()
+                    timeout = None
+                    if isinstance(extras, dict) and "time_outs" in extras:
+                        timeout = bool(extras["time_outs"][0].item())
+                    print(
+                        "[BASE_DEBUG]"
+                        f" step={debug_step}"
+                        f" episode_len={episode_len}"
+                        f" done={bool(dones[0].item())}"
+                        f" timeout={timeout}"
+                        f" command={['%.3f' % x for x in command.detach().cpu().tolist()]}"
+                        f" root_z={root_z.item():.3f}"
+                        f" lin_vel_b={['%.3f' % x for x in root_lin_vel_b.detach().cpu().tolist()]}"
+                        f" yaw_vel_b={root_ang_vel_b[2].item():.3f}"
+                        f" vel_err_x={(command[0] - root_lin_vel_b[0]).item():.3f}"
+                        f" vel_err_y={(command[1] - root_lin_vel_b[1]).item():.3f}"
+                        f" yaw_err={(command[2] - root_ang_vel_b[2]).item():.3f}"
+                        f" action_absmax={actions[0].abs().max().item():.3f}"
+                        f" base_action_absmax={actions[0, : base_action.action_dim].abs().max().item():.3f}"
+                        f" wheel_names={wheel_names}"
+                        f" wheel_actions={['%.3f' % x for x in wheel_actions.detach().cpu().tolist()]}"
+                        f" wheel_vel_target={['%.3f' % x for x in wheel_vel_target.detach().cpu().tolist()]}"
+                        f" wheel_vel={['%.3f' % x for x in wheel_vel.detach().cpu().tolist()]}"
+                        f" wheel_pos={['%.3f' % x for x in wheel_pos.detach().cpu().tolist()]}"
+                        f" leg_reward_step={leg_rewards[0].item():.4f}"
+                        f" arm_reward_step={arm_rewards[0].item():.4f}"
+                        f" cost_step={costs[0].detach().cpu().flatten().tolist()}"
+                        f" wheel_torque={['%.3f' % x for x in wheel_torque.detach().cpu().tolist()]}"
+                    )
+                except Exception as exc:
+                    print(f"[BASE_DEBUG] step={debug_step} error={exc}")
+            if args_cli.debug_arm and args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
                 unwrapped = env.unwrapped
                 robot = unwrapped.scene["robot"]
                 try:
@@ -321,6 +359,7 @@ def main():
                         f" before_error={before_error}"
                         f" after_error={exc}"
                     )
+            if args_cli.debug_steps > 0 and debug_step < args_cli.debug_steps:
                 debug_step += 1
         if args_cli.video:
             timestep += 1

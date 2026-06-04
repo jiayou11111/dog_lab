@@ -104,6 +104,14 @@ class LocoBaseAction(ActionTerm):
         self._wheel_joint_ids = [self._joint_ids[i] for i in self._wheel_local_ids]
         self._non_wheel_local_ids = [i for i in range(len(self._joint_ids)) if i not in self._wheel_local_ids]
         self._non_wheel_joint_ids = [self._joint_ids[i] for i in self._non_wheel_local_ids]
+        self._wheel_joint_map = [
+            {"action_id": local_id, "joint_id": joint_id, "name": self._joint_names[local_id]}
+            for local_id, joint_id in zip(self._wheel_local_ids, self._wheel_joint_ids)
+        ]
+        self._non_wheel_joint_map = [
+            {"action_id": local_id, "joint_id": joint_id, "name": self._joint_names[local_id]}
+            for local_id, joint_id in zip(self._non_wheel_local_ids, self._non_wheel_joint_ids)
+        ]
 
         self._raw_actions = torch.zeros(self.num_envs, self.cfg.action_dim, device=self.device)
         self._processed_actions = torch.zeros_like(self._raw_actions)
@@ -129,9 +137,7 @@ class LocoBaseAction(ActionTerm):
         if motor_strength is None:
             motor_strength = 1.0
         pos_actions = actions[:, self._non_wheel_local_ids] * self.cfg.position_scale
-        wheel_sign = torch.tensor([1.0, -1.0, 1.0, -1.0], device=self.device)
-        vel_actions = actions[:, self._wheel_local_ids] * self.cfg.velocity_scale * wheel_sign
-        # vel_actions = actions[:, self._wheel_local_ids] * self.cfg.velocity_scale
+        vel_actions = actions[:, self._wheel_local_ids] * self.cfg.velocity_scale
         if isinstance(motor_strength, torch.Tensor):
             pos_actions = pos_actions * motor_strength[:, self._non_wheel_local_ids]
             vel_actions = vel_actions * motor_strength[:, self._wheel_local_ids]

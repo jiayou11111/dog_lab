@@ -43,7 +43,26 @@ class Go2wPiperCfg:
         file = str(DEPLOY_MUJOCO_ROOT / "robots" / "go2w_piper" / "scene.xml")
         actor_path = str(DEPLOY_MUJOCO_ROOT / "pre_train" / "go2w_piper_cost" / "traced_actor.pt")
         hist_encoder_path = str(DEPLOY_MUJOCO_ROOT / "pre_train" / "go2w_piper_cost" / "traced_hist_encoder.pt")
-        wheel_names = ["FL_wheel_joint", "FR_wheel_joint", "RL_wheel_joint", "RR_wheel_joint"]
+        base_joint_names = [
+            "FR_hip_joint",
+            "FR_thigh_joint",
+            "FR_calf_joint",
+            "FR_wheel_joint",
+            "FL_hip_joint",
+            "FL_thigh_joint",
+            "FL_calf_joint",
+            "FL_wheel_joint",
+            "RR_hip_joint",
+            "RR_thigh_joint",
+            "RR_calf_joint",
+            "RR_wheel_joint",
+            "RL_hip_joint",
+            "RL_thigh_joint",
+            "RL_calf_joint",
+            "RL_wheel_joint",
+        ]
+        arm_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
+        wheel_names = ["FR_wheel_joint", "FL_wheel_joint", "RR_wheel_joint", "RL_wheel_joint"]
 
     class control:
         # PD Drive parameters:

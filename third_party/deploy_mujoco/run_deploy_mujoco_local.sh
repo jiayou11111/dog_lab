@@ -1,0 +1,1 @@
+# PYTHONPATH=third_party/deploy_mujoco/_deps:$PYTHONPATH MUJOCO_GL=egl python third_party/deploy_mujoco/deploy_mujoco.py 

@@ -34,12 +34,10 @@ class Go2wPiper:
         self.hist_encoder_policy.eval()
 
     def _init_robot(self):
-        # joint names
-        self.joint_names = []
-        for j in range(self.model.njnt):
-            name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, j)
-            if isinstance(name, str):
-                self.joint_names.append(name)
+        # Policy joint order must match the Isaac Lab training observation/action order.
+        self.base_joint_names = list(self.cfg.asset.base_joint_names)
+        self.arm_joint_names = list(self.cfg.asset.arm_joint_names)
+        self.joint_names = self.base_joint_names + self.arm_joint_names
         self.joint_num = len(self.joint_names)
 
         # wheel indices
@@ -47,6 +45,28 @@ class Go2wPiper:
         for wheel_name in self.cfg.asset.wheel_names:
             jid = self.joint_names.index(wheel_name)
             self.wheel_indices.append(jid)
+
+        # MuJoCo actuator order follows the XML, so map policy-order base joints to actuator ids.
+        self.base_actuator_ids = []
+        for joint_name in self.base_joint_names:
+            joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+            if joint_id < 0:
+                raise ValueError(f"Joint not found in MuJoCo model: {joint_name}")
+            actuator_id = None
+            for i in range(self.model.nu):
+                if self.model.actuator_trnid[i, 0] == joint_id:
+                    actuator_id = i
+                    break
+            if actuator_id is None:
+                raise ValueError(f"Actuator not found for base joint: {joint_name}")
+            self.base_actuator_ids.append(actuator_id)
+
+        self.arm_qpos_adrs = []
+        for joint_name in self.arm_joint_names:
+            joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+            if joint_id < 0:
+                raise ValueError(f"Arm joint not found in MuJoCo model: {joint_name}")
+            self.arm_qpos_adrs.append(self.model.jnt_qposadr[joint_id])
         
         # PD parameters
         self.p_gains = np.zeros(self.joint_num)
@@ -124,6 +144,20 @@ class Go2wPiper:
         else:
             self.motor_strength = np.ones(self.cfg.env.num_actions)
 
+        self._reset_mujoco_state()
+
+    def _reset_mujoco_state(self):
+        self.data.qpos[:] = self.model.qpos0
+        self.data.qvel[:] = 0.0
+        self.data.ctrl[:] = 0.0
+        for joint_name, joint_pos in self.cfg.init_state.default_joint_angles.items():
+            joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+            if joint_id < 0:
+                continue
+            qpos_adr = self.model.jnt_qposadr[joint_id]
+            self.data.qpos[qpos_adr] = joint_pos
+        mujoco.mj_forward(self.model, self.data)
+
     def get_sensor_data(self, name):
         id_ = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, name)
         adr, dim = self.model.sensor_adr[id_], self.model.sensor_dim[id_]
@@ -199,7 +233,7 @@ class Go2wPiper:
         self.get_body_states()
         self.step_sample_time = self.data.time
         # set cmds
-        cmds = [0.5, 0.0, 0.0, 0.0]
+        cmds = [0.15, 0.0, 0.0, 0.0]
         self.set_commands(cmds)
         # ee goal update
         self.ee_goal_sampler._update_curr_goal()
@@ -230,8 +264,9 @@ class Go2wPiper:
 
         # ctrl
         self.torques = self.compute_torques(self.actions)
-        self.data.ctrl[:] = self.torques[:self.num_leg_actions]
-        self.data.qpos[-self.num_arm_actions:] = self.arm_target_angles
+        self.data.ctrl[:] = 0.0
+        self.data.ctrl[self.base_actuator_ids] = self.torques[:self.num_leg_actions]
+        self.data.qpos[self.arm_qpos_adrs] = self.arm_target_angles
 
         # visualize trajectories
         ee_start_pos_world = quat_apply(self.arm_base_quat, self.ee_goal_sampler.ee_start_cart) + self.arm_base_pos

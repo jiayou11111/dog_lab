@@ -41,7 +41,7 @@ class Go2wPiperFlatEnvCfg_PLAY(Go2wPiperFlatEnvCfg):
 
         self.scene.num_envs = 1
         self.scene.env_spacing = 2.5
-        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1, size=8.0)
+        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1, size=38.0)
         self.observations.policy.enable_corruption = False
         self.events.randomize_loco_domain = None
         self.events.base_external_force_torque = None
@@ -67,7 +67,7 @@ class Go2wPiperFlatGraspEnvCfg_PLAY(Go2wPiperFlatGraspEnvCfg):
 
         self.scene.num_envs = 1
         self.scene.env_spacing = 2.5
-        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1, size=8.0)
+        self.scene.terrain.terrain_generator = _make_flat_terrain_generator(num_rows=1, num_cols=1, size=38.0)
         self.observations.policy.enable_corruption = False
         self.events.randomize_loco_domain = None
         self.events.base_external_force_torque = None

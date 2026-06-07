@@ -2,6 +2,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 import sys
+import csv
 from pathlib import Path
 
 THIRD_PARTY_ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,35 @@ from deploy_mujoco.configs import Go2wPiperCfg
 import argparse
 import torch
 import time
+
+
+def make_csv_writer(path, num_obs, num_actions):
+    if not path:
+        return None, None
+    csv_file = open(path, "w", newline="")
+    writer = csv.writer(csv_file)
+    writer.writerow(
+        ["step", "time", "cmd_vx", "cmd_vy", "cmd_wz"]
+        + [f"obs_{i}" for i in range(num_obs)]
+        + [f"action_{i}" for i in range(num_actions)]
+        + [f"ee_goal_{i}" for i in range(3)]
+    )
+    return csv_file, writer
+
+
+def write_csv_row(writer, step, robot):
+    if writer is None:
+        return
+    writer.writerow(
+        [
+            step,
+            robot.step_sample_time,
+            *robot.commands[:3].tolist(),
+            *robot.obs_buf.tolist(),
+            *robot.actions.tolist(),
+            *robot.ee_goal_pos.tolist(),
+        ]
+    )
 
 class Go2wPiper:
     def __init__(self, cfg: Go2wPiperCfg, actor_path=None, hist_encoder_path=None, xml_path=None):
@@ -286,6 +316,7 @@ def parse_args():
     parser.add_argument("--xml-path", type=str, default=None, help="Path to the MuJoCo scene XML.")
     parser.add_argument("--no-viewer", action="store_true", help="Run without opening the MuJoCo viewer.")
     parser.add_argument("--duration", type=float, default=20.0, help="Headless run duration in seconds.")
+    parser.add_argument("--csv-path", type=str, default="deploy_mujoco_obs_action.csv")
     return parser.parse_args()
 
 
@@ -300,33 +331,43 @@ def main():
     )
     robot._init_robot()
     ee_logger = EETrackingLogger(start_time_s=1.0, end_time_s=10.0)
+    csv_file, csv_writer = make_csv_writer(args.csv_path, robot.num_proprio, robot.cfg.env.num_actions)
+    step = 0
     # running
-    if args.no_viewer:
-        while robot.data.time < args.duration:
-            robot.step()
-            ee_logger.log_sample(
-                robot.step_sample_time,
-                robot.ee_pos,
-                robot.curr_ee_goal_pos_world,
-            )
-            ee_logger.maybe_print(robot.data.time)
-        return
+    try:
+        if args.no_viewer:
+            while robot.data.time < args.duration:
+                robot.step()
+                write_csv_row(csv_writer, step, robot)
+                step += 1
+                ee_logger.log_sample(
+                    robot.step_sample_time,
+                    robot.ee_pos,
+                    robot.curr_ee_goal_pos_world,
+                )
+                ee_logger.maybe_print(robot.data.time)
+            return
 
-    with mujoco.viewer.launch_passive(robot.model, robot.data) as viewer:
-        while viewer.is_running():
-            step_start = time.time()
-            robot.step()
-            ee_logger.log_sample(
-                robot.step_sample_time,
-                robot.ee_pos,
-                robot.curr_ee_goal_pos_world,
-            )
-            ee_logger.maybe_print(robot.data.time)
-            robot.ee_point_vis.render(viewer)
-            viewer.sync()
-            time_until_next_step = robot.model.opt.timestep - (time.time() - step_start)
-            if time_until_next_step > 0:
-                time.sleep(time_until_next_step)
+        with mujoco.viewer.launch_passive(robot.model, robot.data) as viewer:
+            while viewer.is_running():
+                step_start = time.time()
+                robot.step()
+                write_csv_row(csv_writer, step, robot)
+                step += 1
+                ee_logger.log_sample(
+                    robot.step_sample_time,
+                    robot.ee_pos,
+                    robot.curr_ee_goal_pos_world,
+                )
+                ee_logger.maybe_print(robot.data.time)
+                robot.ee_point_vis.render(viewer)
+                viewer.sync()
+                time_until_next_step = robot.model.opt.timestep - (time.time() - step_start)
+                if time_until_next_step > 0:
+                    time.sleep(time_until_next_step)
+    finally:
+        if csv_file is not None:
+            csv_file.close()
 
 if __name__ == "__main__":
     main()
